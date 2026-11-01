@@ -1424,6 +1424,8 @@ let _importQueue = [];
 let _importQueueProcessing = false;
 let _importQueueCancelled = false;
 let _importAllSuggestions = [];
+// Must stay <= _BULK_ADD_MAX_ITEMS in routes/memory/memory_routes.py.
+const _BULK_SAVE_CHUNK = 200;
 
 export async function importMemories() {
   const fileInput = document.getElementById('memory-import-file');
@@ -1708,24 +1710,55 @@ function _showBatchSuggestions(reviewItems, fileCount) {
   saveAllBtn.className = 'memory-item-btn save';
   saveAllBtn.textContent = 'save all';
   saveAllBtn.addEventListener('click', async () => {
-    let saved = 0;
-    for (const s of reviewItems) {
-      if (!s.active || !s.text) continue;
+    if (saveAllBtn.disabled) return;
+    const pending = reviewItems.filter(s => s.active && s.text);
+    if (!pending.length) return;
+    saveAllBtn.disabled = true;
+    backBtn.disabled = true;
+    let added = 0;
+    let skipped = 0;
+    let failed = 0;
+    let done = 0;
+    for (let i = 0; i < pending.length; i += _BULK_SAVE_CHUNK) {
+      const chunk = pending.slice(i, i + _BULK_SAVE_CHUNK);
+      saveAllBtn.textContent = `saving ${done}/${pending.length}\u2026`;
       try {
-        await fetch(`${window.location.origin}/api/memory/add`, {
+        const res = await fetch(`${window.location.origin}/api/memory/add-bulk`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: s.text, category: s.category })
+          body: JSON.stringify({ items: chunk.map(s => ({ text: s.text, category: s.category })) })
         });
-        saved++;
-      } catch (e) { /* skip */ }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const result = await res.json();
+        added += result.added || 0;
+        skipped += result.skipped || 0;
+        for (const s of chunk) {
+          s.active = false;
+          if (s._el) s._el.remove();
+        }
+      } catch (e) {
+        failed += chunk.length;
+        console.error('Bulk memory save failed:', e);
+      }
+      done += chunk.length;
+      updateHeaderTitle();
+    }
+    saveAllBtn.disabled = false;
+    backBtn.disabled = false;
+    saveAllBtn.textContent = 'save all';
+    await loadMemories();
+    const summary = `Saved ${added} memories` +
+      (skipped ? ` \u2022 ${skipped} duplicates skipped` : '') +
+      (failed ? ` \u2022 ${failed} failed (still listed)` : '');
+    if (failed) {
+      showError(summary);
+      return;
     }
     body.classList.add('hidden');
     body.innerHTML = '';
     if (memList) memList.classList.remove('hidden');
-    await loadMemories();
     document.querySelector('.memory-tab[data-memory-tab="browse"]')?.click();
-    showToast(`Saved ${saved} memories from ${fileCount} file${fileCount > 1 ? 's' : ''}`);
+    showToast(summary);
   });
 
   headerActions.appendChild(saveAllBtn);
@@ -1755,6 +1788,7 @@ function _showBatchSuggestions(reviewItems, fileCount) {
     items.forEach(item => {
       const div = document.createElement('div');
       div.className = 'memory-suggestion-item';
+      item._el = div;
 
       const content = document.createElement('div');
       content.className = 'memory-item-content';

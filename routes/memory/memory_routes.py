@@ -35,6 +35,21 @@ from src.upload_limits import read_upload_limited, MEMORY_IMPORT_MAX_BYTES
 logger = logging.getLogger(__name__)
 
 
+_BULK_ADD_MAX_ITEMS = 500
+_MAX_FALLBACK_MEMORY_CHARS = 300
+
+
+def _loads_embedded_json_array(raw: str):
+    """json.loads, retrying on the outermost [...] when prose surrounds it."""
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        start, end = raw.find("["), raw.rfind("]")
+        if start == -1 or end <= start:
+            raise
+        return json.loads(raw[start:end + 1])
+
+
 def _load_for_update(memory_manager) -> List[Dict[str, Any]]:
     """Load the whole store for a read-modify-write cycle.
 
@@ -144,6 +159,69 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
         except Exception:
             logger.debug("memory_added event dispatch failed", exc_info=True)
         return {"ok": True, "count": len([m for m in all_mem if m.get("owner") == user])}
+
+    @router.post("/add-bulk", response_model=Dict[str, Any])
+    async def api_add_memories_bulk(request: Request):
+        """Add many memories in one read-modify-write (import "save all").
+
+        Body: {"items": [{"text": str, "category": str}, ...]}. Exact
+        duplicates (against the store and within the batch) are skipped.
+        """
+        from src.auth_helpers import require_privilege
+        require_privilege(request, "can_manage_memory")
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(400, "Body must be JSON")
+        items = body.get("items") if isinstance(body, dict) else None
+        if not isinstance(items, list):
+            raise HTTPException(400, "items must be a list")
+        if len(items) > _BULK_ADD_MAX_ITEMS:
+            raise HTTPException(413, f"At most {_BULK_ADD_MAX_ITEMS} memories per request")
+
+        user = _owner(request)
+        all_mem = _load_for_update(memory_manager)
+        seen = {
+            (m.get("text") or "").strip().lower()
+            for m in all_mem
+            if m.get("owner") == user or user is None
+        }
+        new_entries = []
+        skipped = 0
+        for raw in items:
+            text = str(raw.get("text") or "").strip() if isinstance(raw, dict) else ""
+            key = text.lower()
+            if not text or key in seen:
+                skipped += 1
+                continue
+            try:
+                data = MemoryAddRequest(
+                    text=text,
+                    category=str(raw.get("category") or "fact"),
+                    source=str(raw.get("source") or "user"),
+                )
+            except Exception:
+                skipped += 1
+                continue
+            seen.add(key)
+            new_entries.append(memory_manager.add_entry(text, data.source, data.category, owner=user))
+
+        if new_entries:
+            all_mem.extend(new_entries)
+            memory_manager.save(all_mem)
+            if memory_vector and memory_vector.healthy:
+                memory_vector.add_many(new_entries)
+            try:
+                from src.event_bus import fire_event
+                fire_event("memory_added", user)
+            except Exception:
+                logger.debug("memory_added event dispatch failed", exc_info=True)
+        return {
+            "ok": True,
+            "added": len(new_entries),
+            "skipped": skipped,
+            "count": len([m for m in all_mem if m.get("owner") == user]),
+        }
 
     @router.get("")
     def api_get_memory(request: Request):
@@ -469,7 +547,10 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
                     {"role": "user", "content": f"Document: {filename}\n\n{text}"},
                 ],
                 temperature=0.2,
-                max_tokens=2000,
+                # Reasoning models spend part of the budget thinking; with too
+                # little left the content comes back empty and only the
+                # reasoning trace is returned.
+                max_tokens=4000,
                 headers=headers,
                 reasoning_effort=effort_for_call(endpoint_url, model, user, sess),
             )
@@ -479,7 +560,7 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
             if raw.startswith("```"):
                 raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
 
-            suggestions = json.loads(raw)
+            suggestions = _loads_embedded_json_array(raw)
             if isinstance(suggestions, list):
                 normalized = []
                 for s in suggestions:
@@ -501,7 +582,11 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
         except json.JSONDecodeError:
             # Fallback: split by lines, stripping any "1.", "2)" markdown-list
             # numbering the model added so saved memories don't keep the prefix.
-            lines = [_strip_list_prefix(l.strip()) for l in raw.splitlines() if l.strip() and len(l.strip()) > 5]
+            # Long lines are prose (often a leaked reasoning trace), not facts.
+            lines = [
+                _strip_list_prefix(l.strip()) for l in raw.splitlines()
+                if 5 < len(l.strip()) <= _MAX_FALLBACK_MEMORY_CHARS
+            ]
             return {"suggestions": [{"text": l, "category": "fact"} for l in lines[:20]], "filename": filename}
         except Exception as e:
             logger.error(f"Memory import extraction failed: {e}")

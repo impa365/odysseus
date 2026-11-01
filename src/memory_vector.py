@@ -119,6 +119,32 @@ class MemoryVectorStore:
             except Exception as e:
                 logger.warning("memory add failed in %s lane for %s: %s", lane.name, memory_id, e)
 
+    def add_many(self, entries: List[Dict]):
+        """Add several memory entries with one embedding call per lane.
+
+        Each entry must have 'id' and 'text'. IDs already indexed are skipped.
+        """
+        if not self._healthy:
+            return
+        rows = [(e.get("id"), (e.get("text") or "").strip()) for e in entries or []]
+        rows = [(mid, text) for mid, text in rows if mid and text]
+        if not rows:
+            return
+        for lane in self._lanes:
+            try:
+                existing = set(lane.collection.get(ids=[mid for mid, _ in rows])["ids"] or [])
+                todo = [(mid, text) for mid, text in rows if mid not in existing]
+                if not todo:
+                    continue
+                lane.collection.add(
+                    ids=[mid for mid, _ in todo],
+                    embeddings=lane.encode([text for _, text in todo]),
+                    documents=[text for _, text in todo],
+                    metadatas=[{"source": "memory"} for _ in todo],
+                )
+            except Exception as e:
+                logger.warning("memory bulk add failed in %s lane (%d entries): %s", lane.name, len(rows), e)
+
     def remove(self, memory_id: str):
         """Remove a memory entry. O(1) — no rebuild needed."""
         if not self._healthy:
