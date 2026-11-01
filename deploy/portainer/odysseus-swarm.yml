@@ -1,0 +1,223 @@
+## ================================================================ ##
+##           ODYSSEUS - Stack Docker Swarm para Portainer            ##
+##                 Traefik + rede externa ImpaServer                 ##
+## ================================================================ ##
+##                                                                    ##
+##  Variáveis (Portainer > Stack > Environment variables, ou campo   ##
+##  "Env" da API /api/stacks/create/swarm/string):                   ##
+##    ODYSSEUS_DOMAIN           domínio público (sem https://)       ##
+##    ODYSSEUS_ADMIN_PASSWORD   senha do admin (obrigatória)         ##
+##    ODYSSEUS_ADMIN_USER       usuário admin (padrão: admin)        ##
+##    ODYSSEUS_IMAGE            imagem (padrão impa365/odysseus)     ##
+##    SEARXNG_SECRET            segredo do SearXNG (opcional)        ##
+##                                                                    ##
+##  Chaves de IA/busca podem ser configuradas depois pela interface  ##
+##  (Settings > Models / Search) ou adicionadas aqui no environment. ##
+## ================================================================ ##
+
+version: "3.8"
+
+services:
+
+## --------------------------- ODYSSEUS ---------------------------- ##
+
+  odysseus:
+    image: ${ODYSSEUS_IMAGE:-impa365/odysseus:latest}
+
+    volumes:
+      - odysseus_data:/app/data
+      - odysseus_logs:/app/logs
+      - odysseus_ssh:/app/.ssh
+      - odysseus_huggingface:/app/.cache/huggingface
+      - odysseus_local:/app/.local
+
+    networks:
+      - ImpaServer
+      - odysseus_internal
+
+    environment:
+      ## Autenticação
+      - AUTH_ENABLED=true
+      - LOCALHOST_BYPASS=false
+      - ODYSSEUS_ADMIN_USER=${ODYSSEUS_ADMIN_USER:-admin}
+      - ODYSSEUS_ADMIN_PASSWORD=${ODYSSEUS_ADMIN_PASSWORD}
+      - ALLOWED_ORIGINS=https://${ODYSSEUS_DOMAIN}
+      - SECURE_COOKIES=true
+      ## O Traefik chega pela rede overlay; sem isso o uvicorn ignora X-Forwarded-Proto
+      - FORWARDED_ALLOW_IPS=*
+      - OAUTH_REDIRECT_BASE_URL=https://${ODYSSEUS_DOMAIN}
+      - GOOGLE_OAUTH_REDIRECT_URI=https://${ODYSSEUS_DOMAIN}/api/email/oauth/google/callback
+      - COMPANION_BASE_URL=https://${ODYSSEUS_DOMAIN}
+
+      ## Banco de dados
+      - DATABASE_URL=sqlite:///./data/app.db
+
+      ## Serviços internos da stack
+      - SEARXNG_INSTANCE=http://odysseus_searxng:8080
+      - CHROMADB_HOST=odysseus_chromadb
+      - CHROMADB_PORT=8000
+
+      ## Provedores de IA (opcional, também configurável pela UI)
+      - LLM_HOST=localhost
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+
+      ## Busca (opcional)
+      - DATA_BRAVE_API_KEY=${DATA_BRAVE_API_KEY:-}
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+      - SERPER_API_KEY=${SERPER_API_KEY:-}
+
+      ## Embeddings locais
+      - FASTEMBED_MODEL=sentence-transformers/all-MiniLM-L6-v2
+
+      ## Gerais
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Sao_Paulo
+      - CLEANUP_INTERVAL_HOURS=24
+      - ODYSSEUS_INPROCESS_POLLERS=1
+      - ODYSSEUS_INPROCESS_TASKS=1
+
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:7000/api/health', timeout=5).read(1)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
+
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      update_config:
+        order: stop-first
+      restart_policy:
+        condition: any
+        delay: 10s
+      resources:
+        limits:
+          cpus: "2"
+          memory: 4096M
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=ImpaServer
+        - traefik.http.routers.odysseus.rule=Host(`${ODYSSEUS_DOMAIN}`)
+        - traefik.http.routers.odysseus.entrypoints=websecure
+        - traefik.http.routers.odysseus.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.odysseus.service=odysseus
+        - traefik.http.routers.odysseus-http.rule=Host(`${ODYSSEUS_DOMAIN}`)
+        - traefik.http.routers.odysseus-http.entrypoints=web
+        - traefik.http.routers.odysseus-http.middlewares=odysseus-https-redirect
+        - traefik.http.middlewares.odysseus-https-redirect.redirectscheme.scheme=https
+        - traefik.http.middlewares.odysseus-https-redirect.redirectscheme.permanent=true
+        - traefik.http.services.odysseus.loadbalancer.server.port=7000
+        - traefik.http.services.odysseus.loadbalancer.passHostHeader=true
+
+## --------------------------- CHROMADB --------------------------- ##
+
+  chromadb:
+    image: docker.io/chromadb/chroma:1.5.9@sha256:1e0b73a187a28757c572acba508c46f48c9e8b0acaf5c20e6d95cdedce1acdf6
+
+    volumes:
+      ## A imagem 1.x persiste em /data (/chroma/chroma era o caminho pré-1.0)
+      - odysseus_chromadb:/data
+
+    networks:
+      - odysseus_internal
+
+    environment:
+      - ANONYMIZED_TELEMETRY=FALSE
+
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: any
+        delay: 10s
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1024M
+
+## --------------------------- SEARXNG ---------------------------- ##
+
+  searxng:
+    image: docker.io/searxng/searxng:2026.10.24-ef0ec03da@sha256:7c7cbe509429e82755104b2a95f52085a98633c95d53f44e4e905fa3a59f08c8
+
+    ## Sem bind mount no Swarm: gera o settings.yml (formato json habilitado)
+    ## no primeiro boot, dentro do volume.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        if [ ! -s /etc/searxng/settings.yml ] || grep -q '__SEARXNG_SECRET__' /etc/searxng/settings.yml; then
+          secret="$${SEARXNG_SECRET:-}"
+          if [ -z "$$secret" ]; then
+            secret="$$(python -c 'import secrets; print(secrets.token_urlsafe(48))' 2>/dev/null || /usr/local/searxng/.venv/bin/python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+          fi
+          printf 'use_default_settings: true\n\nserver:\n  secret_key: "%s"\n\nsearch:\n  formats:\n    - html\n    - json\n' "$$secret" > /etc/searxng/settings.yml
+        fi
+        exec /usr/local/searxng/entrypoint.sh
+
+    volumes:
+      - odysseus_searxng:/etc/searxng
+
+    networks:
+      - odysseus_internal
+
+    environment:
+      - SEARXNG_BASE_URL=http://odysseus_searxng:8080/
+      - SEARXNG_SECRET=${SEARXNG_SECRET:-}
+
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: any
+        delay: 10s
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+
+## ================================================================ ##
+
+volumes:
+  odysseus_data:
+    external: true
+    name: odysseus_data
+  odysseus_logs:
+    external: true
+    name: odysseus_logs
+  odysseus_ssh:
+    external: true
+    name: odysseus_ssh
+  odysseus_huggingface:
+    external: true
+    name: odysseus_huggingface
+  odysseus_local:
+    external: true
+    name: odysseus_local
+  odysseus_chromadb:
+    external: true
+    name: odysseus_chromadb
+  odysseus_searxng:
+    external: true
+    name: odysseus_searxng
+
+networks:
+  ImpaServer:
+    external: true
+    name: ImpaServer
+  odysseus_internal:
+    driver: overlay
+    attachable: true
