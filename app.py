@@ -128,9 +128,9 @@ logger = logging.getLogger(__name__)
 # and passed to FastAPI so we can use the modern context-manager lifecycle
 # instead of the deprecated @app.on_event("startup"/"shutdown") decorators.
 app = FastAPI(
-    title="AI Chat Application",
-    description="Comprehensive AI chat with memory, research, and multi-modal capabilities",
-    version="1.0.0",
+    title="Odysseus - Autonomous AI Agent",
+    description="Odysseus: Proactive, self-evolving autonomous AI agent with memory, research, and multi-modal capabilities",
+    version="2.0.0",
 )
 
 # ========= CORS =========
@@ -970,6 +970,28 @@ app.include_router(setup_contacts_routes())
 
 from companion import setup_companion_routes
 app.include_router(setup_companion_routes())
+
+# ========= SKILLS 2.0 ROUTES =========
+# Sistema de skills semântico e auto-evolutivo
+# Note: In production, configure with proper DB and LLM clients
+skills_manager2 = None  # Placeholder - configure in lifespan
+try:
+    from core.skills.api import router as skills2_router
+    app.include_router(skills2_router)
+except Exception:
+    logger.warning("Skills 2.0 routes unavailable", exc_info=True)
+
+
+# ========= CHANNEL BRIDGE ROUTES =========
+# Sistema de integração multi-canal (Telegram, WhatsApp)
+# Note: In production, configure with proper DB connection
+channel_manager = None  # Placeholder - configure in lifespan
+try:
+    from core.channels.api import router as channels_router
+    app.include_router(channels_router)
+except Exception:
+    logger.warning("Channel bridge routes unavailable", exc_info=True)
+
 
 # ========= ROUTES (kept in app.py) =========
 

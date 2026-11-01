@@ -459,6 +459,7 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
 
         from src.utility_effort import effort_for_call
 
+        raw = ""
         try:
             raw = await llm_call_async(
                 endpoint_url,

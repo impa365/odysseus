@@ -1406,8 +1406,13 @@ async function loadEndpoints() {
                 <span style="display:flex;gap:8px;align-items:center;">
                   <a href="#" data-ep-refresh-models="${epId}">Refresh</a>
                 </span>
-              </div>${warningHtml}<span style="opacity:0.5;font-size:11px;">No models</span>`;
+              </div>${warningHtml}<span style="opacity:0.5;font-size:11px;">No models</span>
+              <div class="adm-manual-add" style="margin-top:8px;display:flex;gap:6px;align-items:center;">
+                <input type="text" class="adm-manual-model-input" placeholder="Add model manually (e.g. gpt-4.1)" style="flex:1;padding:4px 8px;font-size:12px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--fg);">
+                <button type="button" class="adm-manual-add-btn" style="padding:4px 10px;font-size:12px;border:1px solid var(--border);border-radius:4px;background:var(--panel);color:var(--fg);cursor:pointer;">Add</button>
+              </div>`;
               attachRefresh();
+              _attachManualAdd(epId, panel, sortedModels, renderModels);
               return;
             }
             const enabledCount = usesPinnedPicker
@@ -1443,7 +1448,7 @@ async function loadEndpoints() {
                 </div>
               </div>`;
             }
-            ).join('') + '</div>';
+            ).join('') + '</div><div class="adm-manual-add" style="margin-top:8px;display:flex;gap:6px;align-items:center;"><input type="text" class="adm-manual-model-input" placeholder="Add model manually (e.g. gpt-4.1)" style="flex:1;padding:4px 8px;font-size:12px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--fg);"><button type="button" class="adm-manual-add-btn" style="padding:4px 10px;font-size:12px;border:1px solid var(--border);border-radius:4px;background:var(--panel);color:var(--fg);cursor:pointer;">Add</button></div>';
             const filterRows = (q) => {
               const needle = q.trim().toLowerCase();
               panel.querySelectorAll('[data-ep-model-row]').forEach(row => {
@@ -1451,6 +1456,7 @@ async function loadEndpoints() {
               });
             };
             attachRefresh();
+            _attachManualAdd(epId, panel, sortedModels, renderModels);
             panel.querySelector(`[data-ep-search="${epId}"]`)?.addEventListener('input', (e) => filterRows(e.target.value));
             panel.querySelector(`[data-ep-select-all="${epId}"]`)?.addEventListener('click', (e) => {
               e.preventDefault();
@@ -1491,6 +1497,48 @@ async function loadEndpoints() {
     const err = '<div class="admin-error">Failed to load</div>';
     [listLocal, listApi].forEach(c => { if (c) c.innerHTML = err; });
   }
+}
+
+function _attachManualAdd(epId, panel, models, renderModels) {
+  const input = panel.querySelector('.adm-manual-model-input');
+  const btn = panel.querySelector('.adm-manual-add-btn');
+  if (!input || !btn) return;
+  const doAdd = async () => {
+    const modelId = input.value.trim();
+    if (!modelId) return;
+    btn.disabled = true;
+    btn.textContent = '...';
+    try {
+      // API endpoints use pinned_models as the picker allow-list (checked rows);
+      // local endpoints treat it as extra manual IDs merged into the inventory.
+      const usesPinnedPicker = panel.dataset.pickerMode === 'pinned';
+      const currentPinned = usesPinnedPicker
+        ? Array.from(panel.querySelectorAll('input.adm-cb-hidden[type=checkbox]:checked')).map(cb => cb.dataset.epModelId)
+        : (models || []).filter(m => m.is_pinned).map(m => m.id);
+      const newPinned = [...new Set([...currentPinned, modelId])];
+      const res = await fetch(`/api/model-endpoints/${epId}/models`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ pinned_models: newPinned }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      input.value = '';
+      const refreshRes = await fetch(`/api/model-endpoints/${epId}/models`, { credentials: 'same-origin' });
+      if (refreshRes.ok) {
+        renderModels(await refreshRes.json());
+        _refreshAfterEndpointChange();
+      }
+      if (uiModule?.showToast) uiModule.showToast(`Model "${modelId}" added`, 2000);
+    } catch (e) {
+      if (uiModule?.showToast) uiModule.showToast('Failed to add model', 3000);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Add';
+    }
+  };
+  btn.addEventListener('click', doAdd);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doAdd(); } });
 }
 
 async function _saveEpModelState(epId, panel) {

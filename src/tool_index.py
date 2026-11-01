@@ -81,6 +81,37 @@ NON_LATIN_LITERAL_TOOL_HINTS = {
     ),
 }
 
+# Fallback tool set used when RAG retrieval is unavailable (ToolIndex/ChromaDB
+# failed to initialize, e.g. embedding model not configured in Docker). This
+# ensures the agent still has access to core capabilities instead of being
+# crippled to only 3 tools. Inspired by OpenClaw's "all tools always available"
+# philosophy — the agent should never be blind to its own capabilities.
+RAG_FALLBACK_TOOLS = frozenset({
+    # Core coding/system tools
+    "bash", "python", "read_file", "write_file", "edit_file", "grep", "glob", "ls",
+    "get_workspace",
+    # Web/HTTP tools
+    "web_search", "web_fetch", "api_call",
+    # Document tools
+    "create_document", "edit_document", "update_document", "suggest_document", "manage_documents",
+    # Session/model tools
+    "create_session", "list_sessions", "send_to_session", "manage_session", "search_chats",
+    "chat_with_model", "ask_teacher", "pipeline", "list_models", "manage_endpoints",
+    # Admin/management tools
+    "manage_mcp", "manage_skills", "manage_settings", "manage_webhooks", "manage_tokens",
+    "manage_tasks", "manage_calendar", "manage_notes",
+    # Research
+    "trigger_research",
+    # UI control
+    "ui_control",
+    # Image
+    "edit_image", "generate_image",
+    # Contacts
+    "resolve_contact", "manage_contact",
+    # App API (loopback)
+    "app_api",
+})
+
 # Tools that the Personal Assistant always has access to during scheduled
 # check-ins and proactive tasks, in addition to RAG-selected tools.
 ASSISTANT_ALWAYS_AVAILABLE = frozenset({
@@ -599,6 +630,26 @@ class ToolIndex:
         frozenset({"write a", "create a doc", "draft", "compose", "poem", "story",
                    "essay", "outline", "letter"}):
             {"create_document", "edit_document", "update_document"},
+        # MCP / tool management intent — user says "list mcps", "what tools",
+        # "available tools", "show mcp servers", etc.
+        frozenset({"mcp", "mcps", "mcp server", "mcp servers", "mcp tool", "mcp tools",
+                   "model context protocol", "available tools", "list tools",
+                   "what tools", "show tools", "tools available", "our tools",
+                   "our mcps", "show mcps", "list mcps", "configure mcp",
+                   "add mcp", "remove mcp", "connect mcp", "disconnect mcp"}):
+            {"manage_mcp", "manage_skills", "manage_settings", "list_models"},
+        # Shell / code / system intent — user says "run a command", "execute",
+        # "shell", "terminal", "python", etc.
+        frozenset({"shell", "terminal", "command", "commands", "run a", "execute",
+                   "bash", "cmd", "powershell", "script", "code", "python",
+                   "install", "git", "build", "compile", "deploy", "docker"}):
+            {"bash", "python", "read_file", "write_file", "edit_file", "grep", "glob",
+             "ls", "get_workspace"},
+        # Skills intent — user says "show skills", "add skill", "search skills"
+        frozenset({"skill", "skills", "preset", "presets", "slash command",
+                   "slash commands", "add skill", "search skills", "show skills",
+                   "publish skill", "my skills"}):
+            {"manage_skills", "ui_control"},
     }
 
     def get_tools_for_query(

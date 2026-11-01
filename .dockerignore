@@ -52,6 +52,9 @@ timetree*.png
 *_signin_page.png
 *_calendar_view.png
 .gitignore
+openclaw*/
+odysseus-dev-para-analisar/
+.continue/
 
 # Include distribution notices despite the general documentation exclusion.
 !ACKNOWLEDGMENTS.md

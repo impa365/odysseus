@@ -35,6 +35,7 @@ import censorModule from './js/censor.js';
 import galleryModule from './js/gallery.js?v=20260910promptcopy1';
 import { UI_VIS_DEFAULT_OFF, resolveVisibility } from './js/ui_visibility.js?v=20260829chatstyle12';
 import tasksModule from './js/tasks.js?v=20260914taskmodel1';
+import monitorModule from './js/monitor.js';
 import calendarModule from './js/calendar.js?v=20260914emailsource11';
 import notesModule from './js/notes.js?v=20260911notesselectioncancel1';
 import adminModule from './js/admin.js?v=20260929csssplit';
@@ -1092,6 +1093,19 @@ function initializeEventListeners() {
     });
   }
 
+  // Agents / Monitor tool button
+  const toolMonitorBtn = el('tool-monitor-btn');
+  if (toolMonitorBtn) {
+    toolMonitorBtn.addEventListener('click', async () => {
+      if (!monitorModule) return;
+      const Modals = await import('./js/modalManager.js');
+      if (!Modals.toggle('monitor-modal')) {
+        if (monitorModule.isMonitorOpen()) monitorModule.closeMonitor();
+        else monitorModule.openMonitor();
+      }
+    });
+  }
+
   // Calendar tool button
   const toolCalendarBtn = el('tool-calendar-btn');
   if (toolCalendarBtn) {
@@ -1253,6 +1267,7 @@ function initializeEventListeners() {
     '/skills':   () => document.getElementById('tool-skills-btn')?.click(),
     '/gallery':  () => document.getElementById('tool-gallery-btn')?.click(),
     '/tasks':    () => document.getElementById('tool-tasks-btn')?.click(),
+    '/agents':   () => document.getElementById('tool-monitor-btn')?.click(),
     '/library':  () => sessionModule && sessionModule.openLibrary && sessionModule.openLibrary(),
   };
   const _opener = _routeOpen[urlPath];
@@ -3840,6 +3855,7 @@ function startOdysseusApp() {
     'rail-notes':     'tool-notes-btn',
     'rail-skills':    'tool-skills-btn',
     'rail-tasks':     'tool-tasks-btn',
+    'rail-monitor':   'tool-monitor-btn',
     'rail-theme':     'tool-theme-btn',
     'rail-email':     'email-section-title',
   };

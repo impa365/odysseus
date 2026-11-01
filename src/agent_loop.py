@@ -22718,15 +22718,19 @@ async def stream_agent_loop(
             _relevant_tools = None
 
     # Fallback: if RAG unavailable, use keyword-based tool selection
-    # instead of sending ALL tools (which overwhelms the model).
+    # plus a broad fallback set so the agent isn't crippled to 3 tools.
+    # This mirrors the OpenClaw philosophy: the agent should always have
+    # access to its core capabilities (shell, files, web, MCP, skills, etc.)
+    # even when the embedding index is unavailable (e.g. Docker without a
+    # configured embedding model).
     if not guide_only and not _relevant_tools and _retrieval_query:
-        from src.tool_index import ALWAYS_AVAILABLE, ToolIndex
-        _relevant_tools = set(ALWAYS_AVAILABLE)
+        from src.tool_index import ALWAYS_AVAILABLE, RAG_FALLBACK_TOOLS, ToolIndex
+        _relevant_tools = set(ALWAYS_AVAILABLE) | set(RAG_FALLBACK_TOOLS)
         ql = _retrieval_query.lower()
         for keywords, tools in ToolIndex._KEYWORD_HINTS.items():
             if any(kw in ql for kw in keywords):
                 _relevant_tools.update(tools)
-        logger.info(f"[tool-rag] Keyword fallback selected: {sorted(_relevant_tools - ALWAYS_AVAILABLE)}")
+        logger.info(f"[tool-rag] Keyword+fallback selected: {sorted(_relevant_tools - ALWAYS_AVAILABLE)}")
 
     # If deterministic domain detection fired, seed the corresponding domain
     # tools into the selected tool set. This is not direct prompt-pack

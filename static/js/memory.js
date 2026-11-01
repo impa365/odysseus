@@ -1417,7 +1417,13 @@ export function exportMemories() {
   showToast(`Exported ${memories.length} memories`);
 }
 
-// ---- Import from file ----
+// ---- Import from file (supports single or batch) ----
+
+// Queue state for batch imports
+let _importQueue = [];
+let _importQueueProcessing = false;
+let _importQueueCancelled = false;
+let _importAllSuggestions = [];
 
 export async function importMemories() {
   const fileInput = document.getElementById('memory-import-file');
@@ -1425,10 +1431,133 @@ export async function importMemories() {
   fileInput.click();
 }
 
+/**
+ * Handle one or more files selected for import.
+ * Queues them and processes sequentially, one at a time.
+ */
+async function handleImportFiles(files) {
+  if (!files || files.length === 0) return;
+
+  const fileArray = Array.from(files);
+
+  // Add to queue
+  for (const f of fileArray) {
+    _importQueue.push({ file: f, status: 'pending', error: null });
+  }
+
+  _renderImportQueue();
+
+  // If not already processing, start the queue
+  if (!_importQueueProcessing) {
+    _importQueueCancelled = false;
+    _importAllSuggestions = [];
+    await _processImportQueue();
+  }
+}
+
+// Legacy single-file wrapper (backwards compat)
 async function handleImportFile(file) {
   if (!file) return;
+  await handleImportFiles([file]);
+}
 
-  const sessionId = sessionModule?.getCurrentSessionId?.();
+/**
+ * Render the import queue UI in the Add tab.
+ */
+function _renderImportQueue() {
+  const queueEl = document.getElementById('memory-import-queue');
+  const listEl = document.getElementById('memory-import-queue-list');
+  const countEl = document.getElementById('memory-import-queue-count');
+  const fillEl = document.getElementById('memory-import-queue-fill');
+  if (!queueEl || !listEl) return;
+
+  if (_importQueue.length === 0) {
+    queueEl.classList.add('hidden');
+    return;
+  }
+
+  queueEl.classList.remove('hidden');
+
+  // Stats
+  const total = _importQueue.length;
+  const done = _importQueue.filter(i => i.status === 'done' || i.status === 'failed').length;
+  const processing = _importQueue.filter(i => i.status === 'processing').length;
+  const pending = _importQueue.filter(i => i.status === 'pending').length;
+
+  if (countEl) countEl.textContent = `${done}/${total} processed` + (pending > 0 ? ` \u2022 ${pending} remaining` : '');
+  if (fillEl) fillEl.style.width = total > 0 ? `${Math.round((done / total) * 100)}%` : '0%';
+
+  // Render list items
+  listEl.innerHTML = '';
+  _importQueue.forEach((item, idx) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:4px;background:var(--bg-tertiary);font-size:12px;';
+
+    // Status icon
+    const icon = document.createElement('span');
+    icon.style.cssText = 'flex:none;width:16px;text-align:center;';
+    if (item.status === 'pending') icon.textContent = '\u23F3';
+    else if (item.status === 'processing') { icon.textContent = '\u26A1'; icon.style.animation = 'pulse 1s infinite'; }
+    else if (item.status === 'done') icon.textContent = '\u2705';
+    else if (item.status === 'failed') icon.textContent = '\u274C';
+    else if (item.status === 'cancelled') icon.textContent = '\u23F9';
+
+    // File name
+    const name = document.createElement('span');
+    name.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary);';
+    name.textContent = item.file.name;
+    name.title = item.file.name;
+
+    // Size
+    const size = document.createElement('span');
+    size.style.cssText = 'flex:none;color:var(--text-secondary);font-size:11px;';
+    size.textContent = _formatFileSize(item.file.size);
+
+    // Error message
+    const errorEl = document.createElement('span');
+    if (item.status === 'failed' && item.error) {
+      errorEl.style.cssText = 'flex:none;color:var(--accent-danger,#f85149);font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      errorEl.textContent = item.error;
+      errorEl.title = item.error;
+    }
+
+    // Cancel button for pending items
+    const actions = document.createElement('span');
+    actions.style.cssText = 'flex:none;';
+    if (item.status === 'pending') {
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'memory-item-btn delete';
+      cancelBtn.textContent = '\u00D7';
+      cancelBtn.title = 'Remove from queue';
+      cancelBtn.style.cssText = 'font-size:14px;padding:0 4px;min-width:0;line-height:1;';
+      cancelBtn.addEventListener('click', () => {
+        _importQueue.splice(idx, 1);
+        _renderImportQueue();
+      });
+      actions.appendChild(cancelBtn);
+    }
+
+    row.appendChild(icon);
+    row.appendChild(name);
+    row.appendChild(size);
+    if (item.error) row.appendChild(errorEl);
+    row.appendChild(actions);
+    listEl.appendChild(row);
+  });
+}
+
+function _formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+/**
+ * Process the import queue sequentially, one file at a time.
+ * After all files are processed, show combined suggestions.
+ */
+async function _processImportQueue() {
+  _importQueueProcessing = true;
 
   const importBtn = document.getElementById('memory-import-btn');
   const _origImportHtml = importBtn ? importBtn.innerHTML : '';
@@ -1439,161 +1568,241 @@ async function handleImportFile(file) {
     importSpin = spinnerModule.createWhirlpool(12);
     importSpin.element.style.cssText = 'width:12px;height:12px;margin:0 5px 0 0;display:inline-flex;vertical-align:-2px;transform:translateY(-1px);';
     importBtn.appendChild(importSpin.element);
-    importBtn.appendChild(document.createTextNode('Importing'));
+    importBtn.appendChild(document.createTextNode('Importing\u2026'));
   }
 
+  const sessionId = sessionModule?.getCurrentSessionId?.();
+
   try {
-    const formData = new FormData();
-    formData.append('file', file);
-    if (sessionId) {
-        formData.append('session', sessionId);
-    }
+    while (_importQueue.some(i => i.status === 'pending') && !_importQueueCancelled) {
+      const item = _importQueue.find(i => i.status === 'pending');
+      if (!item) break;
 
-    const res = await fetch(`${window.location.origin}/api/memory/import`, {
-      method: 'POST',
-      body: formData
-    });
+      item.status = 'processing';
+      _renderImportQueue();
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || 'Import failed');
-    }
+      // Update button text with progress
+      const total = _importQueue.length;
+      const done = _importQueue.filter(i => i.status === 'done' || i.status === 'failed').length;
+      if (importBtn) {
+        const textNode = importBtn.childNodes[1];
+        if (textNode) textNode.textContent = `Importing ${done + 1}/${total}\u2026`;
+      }
 
-    const data = await res.json();
-    const suggestions = data.suggestions || [];
+      try {
+        const formData = new FormData();
+        formData.append('file', item.file);
+        if (sessionId) formData.append('session', sessionId);
 
-    // Show suggestions using the existing suggestions UI
-    const modal = document.getElementById('memory-modal');
-    const body = document.getElementById('memory-suggestions-body');
-    if (!body) return;
+        const res = await fetch(`${window.location.origin}/api/memory/import`, {
+          method: 'POST',
+          body: formData
+        });
 
-    body.innerHTML = '';
-    body.classList.remove('hidden');
-
-    const memList = document.getElementById('memory-list');
-    if (memList) memList.classList.add('hidden');
-
-    if (suggestions.length === 0) {
-      body.innerHTML = '<div class="memory-empty">No useful information found in file.</div>';
-    } else {
-      const reviewItems = suggestions
-        .map((s) => ({
-          text: typeof s === 'string' ? s : s.text,
-          category: (typeof s === 'object' && s.category) || 'fact',
-          active: true,
-        }))
-        .filter((s) => s.text);
-      const header = document.createElement('div');
-      header.className = 'memory-suggestions-header';
-      const headerTitle = document.createElement('span');
-      const updateHeaderTitle = () => {
-        const remaining = reviewItems.filter((item) => item.active).length;
-        headerTitle.textContent = `Imported from ${data.filename || file.name} (${remaining}) Review`;
-      };
-      updateHeaderTitle();
-      const headerActions = document.createElement('div');
-      headerActions.className = 'memory-suggestions-actions';
-      const backBtn = document.createElement('button');
-      backBtn.className = 'memory-item-btn';
-      backBtn.textContent = 'back';
-      backBtn.addEventListener('click', () => {
-        body.classList.add('hidden');
-        body.innerHTML = '';
-        if (memList) memList.classList.remove('hidden');
-      });
-      const saveAllBtn = document.createElement('button');
-      saveAllBtn.className = 'memory-item-btn save';
-      saveAllBtn.textContent = 'save all';
-      saveAllBtn.addEventListener('click', async () => {
-        let saved = 0;
-        for (const s of reviewItems) {
-          if (!s.active || !s.text) continue;
-          try {
-            await fetch(`${window.location.origin}/api/memory/add`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ text: s.text, category: s.category })
-            });
-            saved++;
-          } catch (e) { /* skip */ }
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || 'Import failed');
         }
-        body.classList.add('hidden');
-        body.innerHTML = '';
-        if (memList) memList.classList.remove('hidden');
-        await loadMemories();
-        document.querySelector('.memory-tab[data-memory-tab="browse"]')?.click();
-        showToast(`Saved ${saved} memories`);
-      });
-      headerActions.appendChild(saveAllBtn);
-      headerActions.appendChild(backBtn);
-      header.appendChild(headerTitle);
-      header.appendChild(headerActions);
-      body.appendChild(header);
 
-      reviewItems.forEach(item => {
-        const div = document.createElement('div');
-        div.className = 'memory-suggestion-item';
+        const data = await res.json();
+        const suggestions = data.suggestions || [];
 
-        const content = document.createElement('div');
-        content.className = 'memory-item-content';
-        const txt = document.createElement('span');
-        txt.className = 'memory-item-text';
-        txt.textContent = item.text;
-        const catBadge = document.createElement('span');
-        catBadge.className = 'memory-cat-badge memory-cat-' + item.category;
-        catBadge.textContent = item.category;
-        content.appendChild(txt);
-        content.appendChild(catBadge);
-
-        const actionWrap = document.createElement('div');
-        actionWrap.className = 'memory-suggestion-actions';
-        const btn = document.createElement('button');
-        btn.className = 'memory-item-btn save';
-        btn.textContent = 'save';
-        btn.addEventListener('click', async () => {
-          await fetch(`${window.location.origin}/api/memory/add`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: item.text, category: item.category })
+        // Accumulate suggestions with source file info
+        for (const s of suggestions) {
+          _importAllSuggestions.push({
+            text: typeof s === 'string' ? s : s.text,
+            category: (typeof s === 'object' && s.category) || 'fact',
+            source: data.filename || item.file.name,
+            active: true,
           });
-          item.active = false;
-          div.remove();
-          updateHeaderTitle();
-          btn.disabled = true;
-          btn.textContent = 'saved';
-          showToast('Saved to memory');
-        });
-        const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'memory-item-btn delete';
-        deleteBtn.textContent = 'delete';
-        deleteBtn.addEventListener('click', () => {
-          item.active = false;
-          div.remove();
-          updateHeaderTitle();
-        });
-        actionWrap.appendChild(btn);
-        actionWrap.appendChild(deleteBtn);
+        }
 
-        div.appendChild(content);
-        div.appendChild(actionWrap);
-        body.appendChild(div);
-      });
+        item.status = 'done';
+      } catch (e) {
+        item.status = 'failed';
+        item.error = e.message || 'Unknown error';
+        console.error(`Import failed for ${item.file.name}:`, e);
+      }
+
+      _renderImportQueue();
     }
 
-    openMemoryModal('browse');
-  } catch (error) {
-    console.error('Import failed:', error);
-    showError('Import failed — ' + error.message);
+    // Mark any remaining as cancelled
+    for (const item of _importQueue) {
+      if (item.status === 'pending') item.status = 'cancelled';
+    }
+    _renderImportQueue();
+
+    // Show combined suggestions
+    const validSuggestions = _importAllSuggestions.filter(s => s.text);
+    const doneCount = _importQueue.filter(i => i.status === 'done').length;
+    const failedCount = _importQueue.filter(i => i.status === 'failed').length;
+
+    if (doneCount > 0) {
+      showToast(`Processed ${doneCount} file${doneCount > 1 ? 's' : ''}${failedCount > 0 ? `, ${failedCount} failed` : ''} \u2022 ${validSuggestions.length} memories found`);
+    }
+
+    if (validSuggestions.length > 0) {
+      _showBatchSuggestions(validSuggestions, doneCount);
+    } else if (doneCount > 0) {
+      showToast('No useful information found in the imported files.');
+    }
+
   } finally {
     if (importSpin) importSpin.destroy();
     if (importBtn) {
       importBtn.disabled = false;
       importBtn.innerHTML = _origImportHtml;
     }
-    // Reset file input so the same file can be re-selected
     const fileInput = document.getElementById('memory-import-file');
     if (fileInput) fileInput.value = '';
+
+    _importQueueProcessing = false;
+    _importQueueCancelled = false;
+
+    // Clear queue after a delay so user can still see final state
+    setTimeout(() => {
+      _importQueue = [];
+      _renderImportQueue();
+    }, 3000);
   }
+}
+
+/**
+ * Show combined suggestions from batch import in the existing review UI.
+ * Groups suggestions by source file.
+ */
+function _showBatchSuggestions(reviewItems, fileCount) {
+  const body = document.getElementById('memory-suggestions-body');
+  if (!body) return;
+
+  body.innerHTML = '';
+  body.classList.remove('hidden');
+
+  const memList = document.getElementById('memory-list');
+  if (memList) memList.classList.add('hidden');
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'memory-suggestions-header';
+  const headerTitle = document.createElement('span');
+  const updateHeaderTitle = () => {
+    const remaining = reviewItems.filter(item => item.active).length;
+    headerTitle.textContent = `Imported from ${fileCount} file${fileCount > 1 ? 's' : ''} (${remaining}) Review`;
+  };
+  updateHeaderTitle();
+
+  const headerActions = document.createElement('div');
+  headerActions.className = 'memory-suggestions-actions';
+
+  const backBtn = document.createElement('button');
+  backBtn.className = 'memory-item-btn';
+  backBtn.textContent = 'back';
+  backBtn.addEventListener('click', () => {
+    body.classList.add('hidden');
+    body.innerHTML = '';
+    if (memList) memList.classList.remove('hidden');
+  });
+
+  const saveAllBtn = document.createElement('button');
+  saveAllBtn.className = 'memory-item-btn save';
+  saveAllBtn.textContent = 'save all';
+  saveAllBtn.addEventListener('click', async () => {
+    let saved = 0;
+    for (const s of reviewItems) {
+      if (!s.active || !s.text) continue;
+      try {
+        await fetch(`${window.location.origin}/api/memory/add`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: s.text, category: s.category })
+        });
+        saved++;
+      } catch (e) { /* skip */ }
+    }
+    body.classList.add('hidden');
+    body.innerHTML = '';
+    if (memList) memList.classList.remove('hidden');
+    await loadMemories();
+    document.querySelector('.memory-tab[data-memory-tab="browse"]')?.click();
+    showToast(`Saved ${saved} memories from ${fileCount} file${fileCount > 1 ? 's' : ''}`);
+  });
+
+  headerActions.appendChild(saveAllBtn);
+  headerActions.appendChild(backBtn);
+  header.appendChild(headerTitle);
+  header.appendChild(headerActions);
+  body.appendChild(header);
+
+  // Group by source file
+  const grouped = {};
+  for (const item of reviewItems) {
+    const src = item.source || 'Unknown';
+    if (!grouped[src]) grouped[src] = [];
+    grouped[src].push(item);
+  }
+
+  // Render grouped suggestions
+  for (const [source, items] of Object.entries(grouped)) {
+    // File group header (only show if more than 1 file)
+    if (fileCount > 1) {
+      const groupHeader = document.createElement('div');
+      groupHeader.style.cssText = 'padding:6px 8px 2px;margin-top:8px;font-size:11px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.03em;border-bottom:1px solid var(--border-color);';
+      groupHeader.textContent = `\uD83D\uDCC4 ${source} (${items.length})`;
+      body.appendChild(groupHeader);
+    }
+
+    items.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'memory-suggestion-item';
+
+      const content = document.createElement('div');
+      content.className = 'memory-item-content';
+      const txt = document.createElement('span');
+      txt.className = 'memory-item-text';
+      txt.textContent = item.text;
+      const catBadge = document.createElement('span');
+      catBadge.className = 'memory-cat-badge memory-cat-' + item.category;
+      catBadge.textContent = item.category;
+      content.appendChild(txt);
+      content.appendChild(catBadge);
+
+      const actionWrap = document.createElement('div');
+      actionWrap.className = 'memory-suggestion-actions';
+      const btn = document.createElement('button');
+      btn.className = 'memory-item-btn save';
+      btn.textContent = 'save';
+      btn.addEventListener('click', async () => {
+        await fetch(`${window.location.origin}/api/memory/add`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: item.text, category: item.category })
+        });
+        item.active = false;
+        div.remove();
+        updateHeaderTitle();
+        btn.disabled = true;
+        btn.textContent = 'saved';
+        showToast('Saved to memory');
+      });
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'memory-item-btn delete';
+      deleteBtn.textContent = 'delete';
+      deleteBtn.addEventListener('click', () => {
+        item.active = false;
+        div.remove();
+        updateHeaderTitle();
+      });
+      actionWrap.appendChild(btn);
+      actionWrap.appendChild(deleteBtn);
+
+      div.appendChild(content);
+      div.appendChild(actionWrap);
+      body.appendChild(div);
+    });
+  }
+
+  openMemoryModal('browse');
 }
 
 // Utility aliases (canonical implementations live in uiModule)
@@ -1662,7 +1871,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const importFile = document.getElementById('memory-import-file');
   if (importFile) importFile.addEventListener('change', (e) => {
-    if (e.target.files[0]) handleImportFile(e.target.files[0]);
+    if (e.target.files && e.target.files.length > 0) handleImportFiles(e.target.files);
+  });
+
+  // Cancel-all button for batch import queue
+  const cancelAllBtn = document.getElementById('memory-import-cancel-all-btn');
+  if (cancelAllBtn) cancelAllBtn.addEventListener('click', () => {
+    _importQueueCancelled = true;
+    for (const item of _importQueue) {
+      if (item.status === 'pending') item.status = 'cancelled';
+    }
+    _renderImportQueue();
   });
 
   window.addEventListener('memory-refresh', () => {

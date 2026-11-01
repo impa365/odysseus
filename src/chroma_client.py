@@ -1,8 +1,11 @@
 """
 chroma_client.py
 
-Singleton ChromaDB HTTP client.
-Connects to a ChromaDB instance running as a standalone service.
+Singleton ChromaDB client.
+Tries HTTP client first (standalone ChromaDB service), then falls back
+to embedded PersistentClient (local storage, no external service needed).
+This ensures RAG, memory vectors, and tool indexing work even in Docker
+deployments without a dedicated ChromaDB container.
 """
 
 import os
@@ -12,6 +15,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 _client = None
+_mode = None  # "http" or "embedded"
 
 # A short connect probe so an unreachable ChromaDB fails fast instead of
 # blocking on the OS connection timeout (~30-60s, WinError 10060 on Windows),
@@ -28,13 +32,20 @@ def _port_open(host: str, port: int, timeout: float = None) -> bool:
         return False
 
 
-def get_chroma_client():
-    """Get or create the singleton ChromaDB HTTP client.
+def _embedded_path() -> str:
+    """Return the local path for embedded ChromaDB storage."""
+    from src.constants import DATA_DIR
+    return os.path.join(DATA_DIR, "chroma_embedded")
 
-    Raises RuntimeError with a clear install hint if the `chromadb` package
-    is not installed — it's an optional dependency (RAG + memory vectors).
+
+def get_chroma_client():
+    """Get or create the singleton ChromaDB client.
+
+    Tries HTTP client first (if CHROMADB_HOST/PORT points at a running
+    service), then falls back to embedded PersistentClient so the app
+    works standalone without a ChromaDB container.
     """
-    global _client
+    global _client, _mode
     if _client is not None:
         return _client
 
@@ -43,31 +54,50 @@ def get_chroma_client():
     except ImportError as e:
         raise RuntimeError(
             "ChromaDB integration is not installed. Install the optional "
-            "dependency with: pip install chromadb-client"
+            "dependency with: pip install chromadb"
         ) from e
 
+    # ── Try HTTP client first ──
     host = os.getenv("CHROMADB_HOST", "localhost")
     port = int(os.getenv("CHROMADB_PORT", "8100"))
 
-    if not _port_open(host, port):
+    if _port_open(host, port):
+        try:
+            client = chromadb.HttpClient(host=host, port=port)
+            client.heartbeat()
+            _client = client
+            _mode = "http"
+            logger.info(f"ChromaDB connected (HTTP): {host}:{port}")
+            return _client
+        except Exception as e:
+            logger.warning(f"ChromaDB HTTP at {host}:{port} reachable but unhealthy: {e}")
+
+    # ── Fall back to embedded PersistentClient ──
+    # This stores data locally in DATA_DIR/chroma_embedded — no external
+    # service needed. RAG, memory vectors, and tool indexing all work.
+    try:
+        path = _embedded_path()
+        os.makedirs(path, exist_ok=True)
+        client = chromadb.PersistentClient(path=path)
+        client.heartbeat()
+        _client = client
+        _mode = "embedded"
+        logger.info(f"ChromaDB connected (embedded): {path}")
+        return _client
+    except Exception as e:
         raise RuntimeError(
-            f"ChromaDB is not reachable at {host}:{port}. Start the ChromaDB "
-            f"service (e.g. `docker compose up chromadb`) or set CHROMADB_HOST / "
-            f"CHROMADB_PORT to point at a running instance."
-        )
+            f"ChromaDB unavailable: HTTP service not at {host}:{port} and "
+            f"embedded mode failed: {e}"
+        ) from e
 
-    client = chromadb.HttpClient(host=host, port=port)
 
-    # Health check before caching — if the port is open but the service isn't
-    # healthy yet (e.g. still starting), don't poison the singleton with a dead
-    # client; leave _client unset so the next call retries.
-    client.heartbeat()
-    _client = client
-    logger.info(f"ChromaDB connected: {host}:{port}")
-    return _client
+def get_chroma_mode() -> str:
+    """Return 'http', 'embedded', or None if not yet initialized."""
+    return _mode
 
 
 def reset_client():
     """Reset the singleton (e.g. after config change)."""
-    global _client
+    global _client, _mode
     _client = None
+    _mode = None
