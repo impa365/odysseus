@@ -2839,12 +2839,12 @@ async def llm_call_async(
                 raise HTTPException(r.status_code, friendly)
             logger.info(f"LLM async call to {target_url} succeeded in {duration:.2f}s (attempt {attempt})")
             _clear_host_dead(target_url)
-            raw_text = r.text
-            if not raw_text.strip():
-                raise HTTPException(502, f"Empty response body from {target_url}")
             try:
-                data = json.loads(raw_text)
-            except json.JSONDecodeError:
+                data = r.json()
+            except ValueError:
+                raw_text = r.text or ""
+                if not raw_text.strip():
+                    raise HTTPException(502, f"Empty response body from {target_url}")
                 raise HTTPException(502, f"Non-JSON response from {target_url}: {raw_text[:400]}")
             if isinstance(data, dict) and data.get("error"):
                 provider_error = data["error"]
