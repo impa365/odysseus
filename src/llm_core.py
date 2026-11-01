@@ -2308,6 +2308,80 @@ def normalize_model_id(
     return None
 
 
+def _collapse_sse_completion(raw: str) -> Optional[Dict]:
+    """Rebuild a chat.completion from an SSE body sent to a non-stream request.
+
+    Some OpenAI-compatible routers (e.g. 9router) answer with
+    ``text/event-stream`` — ``: keep-alive`` comments plus ``data:`` chunks —
+    even for requests that expect one JSON object. Returns None when the body
+    carries no SSE data lines.
+    """
+    content_parts: List[str] = []
+    reasoning_parts: List[str] = []
+    finish_reason = None
+    model = None
+    completion_id = None
+    usage = None
+    seen = False
+    for line in (raw or "").splitlines():
+        line = line.strip()
+        if not line.startswith("data:"):
+            continue
+        body = line[5:].strip()
+        if not body or body == "[DONE]":
+            continue
+        try:
+            chunk = json.loads(body)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(chunk, dict):
+            continue
+        seen = True
+        if chunk.get("error"):
+            return chunk
+        model = chunk.get("model") or model
+        completion_id = chunk.get("id") or completion_id
+        usage = chunk.get("usage") or usage
+        for choice in chunk.get("choices") or []:
+            if not isinstance(choice, dict):
+                continue
+            part = choice.get("delta") or choice.get("message") or {}
+            if isinstance(part.get("content"), str):
+                content_parts.append(part["content"])
+            reasoning = part.get("reasoning_content") or part.get("reasoning")
+            if isinstance(reasoning, str):
+                reasoning_parts.append(reasoning)
+            finish_reason = choice.get("finish_reason") or finish_reason
+    if not seen:
+        return None
+    message: Dict = {"role": "assistant", "content": "".join(content_parts)}
+    if reasoning_parts:
+        message["reasoning_content"] = "".join(reasoning_parts)
+    data: Dict = {
+        "id": completion_id,
+        "object": "chat.completion",
+        "model": model,
+        "choices": [{"index": 0, "message": message, "finish_reason": finish_reason}],
+    }
+    if usage:
+        data["usage"] = usage
+    return data
+
+
+def _decode_nonstream_body(r, target_url: str):
+    """JSON body of a non-stream completion, tolerating SSE-framed replies."""
+    try:
+        return r.json()
+    except ValueError:
+        raw_text = r.text or ""
+        if not raw_text.strip():
+            raise HTTPException(502, f"Empty response body from {target_url}")
+        data = _collapse_sse_completion(raw_text)
+        if data is not None:
+            return data
+        raise HTTPException(502, f"Non-JSON response from {target_url}: {raw_text[:400]}")
+
+
 def _apply_explicit_nonstream_reasoning_effort(
     payload: Dict, reasoning_effort: Optional[str]
 ) -> None:
@@ -2383,6 +2457,7 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
             "model": model,
             "messages": messages_copy,
             "temperature": temperature,
+            "stream": False,
         }
         if _omit_temperature(provider, model):
             payload.pop("temperature", None)
@@ -2405,7 +2480,7 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
         raise HTTPException(502, f"POST {target_url} failed: {e}")
     if not r.is_success:
         raise HTTPException(502, f"Upstream {target_url} -> {r.status_code}: {r.text}")
-    data = r.json()
+    data = _decode_nonstream_body(r, target_url)
     try:
         if provider == "anthropic":
             response = _parse_anthropic_response(data)
@@ -2789,6 +2864,7 @@ async def llm_call_async(
             "model": model,
             "messages": messages_copy,
             "temperature": temperature,
+            "stream": False,
         }
         if _omit_temperature(provider, model):
             payload.pop("temperature", None)
@@ -2839,13 +2915,7 @@ async def llm_call_async(
                 raise HTTPException(r.status_code, friendly)
             logger.info(f"LLM async call to {target_url} succeeded in {duration:.2f}s (attempt {attempt})")
             _clear_host_dead(target_url)
-            try:
-                data = r.json()
-            except ValueError:
-                raw_text = r.text or ""
-                if not raw_text.strip():
-                    raise HTTPException(502, f"Empty response body from {target_url}")
-                raise HTTPException(502, f"Non-JSON response from {target_url}: {raw_text[:400]}")
+            data = _decode_nonstream_body(r, target_url)
             if isinstance(data, dict) and data.get("error"):
                 provider_error = data["error"]
                 status = _provider_stream_error_status(provider_error, default=400)
