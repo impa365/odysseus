@@ -448,8 +448,20 @@ def analyze_image_with_vl_result(image_path: str, owner: str | None = None) -> d
         vl_model = settings.get("vision_model", "")
 
         try:
-            url, model_id, headers = _resolve_vl_model(vl_model, owner=owner)
+            _primary = [_resolve_vl_model(vl_model, owner=owner)]
         except ValueError:
+            _primary = []
+        # Vision-specific fallback chain (Settings → Vision → Fallbacks). A
+        # downed vision endpoint can fall through to the next configured model
+        # — same shape as task/chat but its own list (`vision_model_fallbacks`).
+        # It also serves when no primary Vision model is set at all.
+        try:
+            from src.endpoint_resolver import resolve_vision_fallback_candidates
+            _vl_candidates = _primary + resolve_vision_fallback_candidates(owner=owner)
+        except Exception:
+            _vl_candidates = _primary
+        _vl_candidates = [c for c in _vl_candidates if c and c[0] and c[1]]
+        if not _vl_candidates:
             return {"text": "[No vision model configured — set one in Settings → Vision]", "model": vl_model or ""}
 
         with open(image_path, "rb") as f:
@@ -468,24 +480,16 @@ def analyze_image_with_vl_result(image_path: str, owner: str | None = None) -> d
                 ],
             }
         ]
-        # Vision-specific fallback chain (Settings → Vision → Fallbacks). A
-        # downed vision endpoint can fall through to the next configured model
-        # — same shape as task/chat but its own list (`vision_model_fallbacks`).
-        try:
-            from src.endpoint_resolver import resolve_vision_fallback_candidates
-            _vl_candidates = [(url, model_id, headers)] + resolve_vision_fallback_candidates(owner=owner)
-        except Exception:
-            _vl_candidates = [(url, model_id, headers)]
 
         last_err = None
-        for i, (_url, _model, _headers) in enumerate([c for c in _vl_candidates if c and c[0] and c[1]]):
+        for i, (_url, _model, _headers) in enumerate(_vl_candidates):
             try:
                 description = llm_call(_url, _model, vl_messages, headers=_headers, timeout=120)
                 logger.info("VL analysis complete with model %s", _model)
                 return {"text": description, "model": _model}
             except Exception as e:
                 last_err = e
-                tag = "primary" if i == 0 else "candidate"
+                tag = "primary" if i == 0 and _primary else "candidate"
                 logger.warning(f"[vision fallback] {tag} {_model} failed ({type(e).__name__}); trying next")
                 continue
         raise last_err if last_err else RuntimeError("No vision model endpoint configured")

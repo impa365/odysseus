@@ -324,6 +324,31 @@ def lmstudio_supports_vision(url: str, model: str, headers: Optional[dict] = Non
     return None
 
 
+def is_declared_vision_model(model_name: str, owner: Optional[str] = None) -> bool:
+    """Whether the admin/user listed this model in Settings → Vision.
+
+    Hosted aliases (routers such as 9router/OpenRouter combos) often carry no
+    vision hint in their name, so the explicit Vision picker and its fallback
+    list are the user's own declaration that the model accepts images.
+    """
+    want = (model_name or "").strip().lower()
+    if not want:
+        return False
+    try:
+        from src.settings import get_user_setting
+        primary = get_user_setting("vision_model", owner or "", "") or ""
+        fallbacks = get_user_setting("vision_model_fallbacks", owner or "", []) or []
+    except Exception:
+        return False
+    declared = {str(primary).strip().lower()}
+    if isinstance(fallbacks, list):
+        for entry in fallbacks:
+            if isinstance(entry, dict):
+                declared.add(str(entry.get("model") or "").strip().lower())
+    declared.discard("")
+    return want in declared
+
+
 def model_supports_vision(
     model_name: str,
     endpoint_url: str = "",
@@ -332,7 +357,7 @@ def model_supports_vision(
     """Whether a model accepts images, using the endpoint's reported
     capability when available (LM Studio), a cached one-time probe for local
     OpenAI-compatible endpoints, and name-based detection otherwise."""
-    if is_vision_model(model_name):
+    if is_vision_model(model_name) or is_declared_vision_model(model_name, owner):
         return True
     if endpoint_url:
         target_url = endpoint_url
