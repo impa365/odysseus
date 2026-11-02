@@ -5,6 +5,7 @@ Registry of built-in automation actions that can be executed by the task
 scheduler without needing an LLM call.
 """
 
+import asyncio
 import logging
 import os
 import json
@@ -585,6 +586,10 @@ async def action_tidy_documents(owner: str, **kwargs) -> Tuple[str, bool]:
         return str(e), False
 
 
+_AI_TIDY_BATCH = 100
+_AI_TIDY_MAX_BATCHES = 5
+
+
 async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
     """Consolidate/deduplicate memories for the owner."""
     try:
@@ -626,10 +631,16 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
         ai_reasons = []
         ai_used = False
 
+        _normalized_cache: dict = {}
+
         def _normalized_memory_text(mem: dict) -> str:
-            text = (mem.get("text") or "").lower()
-            text = re.sub(r"[^a-z0-9@._+-]+", " ", text)
-            return " ".join(text.split())
+            key = id(mem)
+            cached = _normalized_cache.get(key)
+            if cached is None:
+                text = (mem.get("text") or "").lower()
+                text = re.sub(r"[^a-z0-9@._+-]+", " ", text)
+                cached = _normalized_cache[key] = " ".join(text.split())
+            return cached
 
         def _memory_rank(mem: dict) -> tuple:
             text = (mem.get("text") or "").strip()
@@ -655,7 +666,12 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
             shorter, longer = sorted((a_text, b_text), key=len)
             if len(shorter) >= 24 and shorter in longer:
                 return True
-            return SequenceMatcher(None, a_text, b_text).ratio() >= 0.88
+            # ratio() <= quick_ratio() <= real_quick_ratio() = 2*min/(la+lb), so
+            # these cheap upper bounds reject most pairs without changing results.
+            if 2 * len(shorter) < 0.88 * (len(shorter) + len(longer)):
+                return False
+            matcher = SequenceMatcher(None, a_text, b_text)
+            return matcher.quick_ratio() >= 0.88 and matcher.ratio() >= 0.88
 
         def _dedupe_group(group_memories: list) -> tuple[list, int]:
             kept = []
@@ -813,7 +829,9 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
 
         for group_owner, group_memories in memory_groups.items():
             total_scanned += len(group_memories)
-            deduped_group, group_removed = _dedupe_group(group_memories)
+            # Pairwise fuzzy matching is O(n^2); keep it off the event loop so
+            # large stores don't stall every request (and the health check).
+            deduped_group, group_removed = await asyncio.to_thread(_dedupe_group, group_memories)
             if group_removed:
                 group_ref_ids = {id(m) for m in group_memories}
                 keep_ref_ids = {id(m) for m in deduped_group}
@@ -824,8 +842,20 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
                 total_removed += group_removed
                 group_memories = deduped_group
 
-            if await _try_ai_tidy_group(group_owner, group_memories):
-                continue
+            if len(group_memories) <= _AI_TIDY_BATCH:
+                if await _try_ai_tidy_group(group_owner, group_memories):
+                    continue
+            else:
+                # One prompt cannot hold thousands of memories; tidy the newest
+                # ones in bounded batches per run.
+                newest = sorted(group_memories, key=lambda m: int(m.get("timestamp") or 0), reverse=True)
+                limit = _AI_TIDY_BATCH * _AI_TIDY_MAX_BATCHES
+                tidied = False
+                for start in range(0, min(len(newest), limit), _AI_TIDY_BATCH):
+                    if await _try_ai_tidy_group(group_owner, newest[start:start + _AI_TIDY_BATCH]):
+                        tidied = True
+                if tidied:
+                    continue
 
             seen = {}
             keep_refs = set()
