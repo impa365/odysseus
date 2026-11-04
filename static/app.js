@@ -2473,6 +2473,10 @@ function initializeEventListeners() {
 	        textarea.setAttribute('placeholder', 'Swipe to toggle plan');
 	        return;
 	      }
+	      if (document.documentElement.getAttribute('data-ui-skin') === 'chatgpt') {
+	        textarea.setAttribute('placeholder', 'Pergunte alguma coisa');
+	        return;
+	      }
 	      textarea.setAttribute('placeholder', width < PLACEHOLDER_COMPACT_WIDTH ? 'Message...' : 'Message Odysseus...');
 	    }
 

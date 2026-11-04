@@ -24,6 +24,11 @@ export const THEMES = {
                 advanced: { sendBtnBg: '#949494', sendBtnHover: '#7f7f7f',
                             userBubbleBg: '#2f2f2f', aiBubbleBg: '#171717',
                             inputBg: '#2f2f2f', brandColor: '#ffffff', brandMixTo: '#ffffff' } },
+  gptlight:   { bg:'#ffffff', fg:'#0d0d0d', panel:'#f9f9f9', border:'#e5e5e5', red:'#5d5d5d',
+                advanced: { sendBtnBg: '#0d0d0d', sendBtnHover: '#2f2f2f',
+                            userBubbleBg: '#f4f4f4', aiBubbleBg: '#ffffff', sidebarBg: '#f9f9f9',
+                            inputBg: '#ffffff', inputBorder: '#e5e5e5', codeBg: '#f7f7f8',
+                            brandColor: '#0d0d0d', brandMixTo: '#0d0d0d', toggleActive: '#0d0d0d' } },
   claude:     { bg:'#1f1e1b', fg:'#f5f1e8', panel:'#2b2926', border:'#514b43', red:'#d97757' },
   cute:       { bg:'#fff4f7', fg:'#63394d', panel:'#fffafd', border:'#edc7d5', red:'#d65f88' },
   eclipse:    { bg:'#17191c', fg:'#e8e4dc', panel:'#0f1113', border:'#3c4248', red:'#46c2b3' },
@@ -35,8 +40,14 @@ export const THEMES = {
 };
 
 const DEFAULT_THEME = 'dark';
-const THEME_DISPLAY_NAMES = { ocean: 'starfield' };
+const THEME_DISPLAY_NAMES = { ocean: 'starfield', gpt: 'GPT', gptlight: 'GPT light' };
 const LS_KEY = 'odysseus-theme';
+
+// Interface skins change typography/shape/layout only (static/css/skin-*.css);
+// colors stay with the theme preset.
+const DEFAULT_SKIN = 'odysseus';
+const UI_SKINS = new Set(['odysseus', 'chatgpt']);
+const SKIN_PALETTES = { chatgpt: { dark: 'gpt', light: 'gptlight' } };
 const CUSTOM_THEMES_KEY = 'odysseus-custom-themes';
 
 const FONT_MAP = {
@@ -521,6 +532,15 @@ export function getSaved() {
 
 export function save(name, colors, opts) {
   const obj = { name, colors };
+  // Callers only pass color/font/effect options; keep the interface skin (and
+  // the theme to restore when leaving it) from the stored object.
+  const prev = getSaved() || {};
+  const skin = opts && 'skin' in opts ? opts.skin : prev.skin;
+  if (UI_SKINS.has(skin) && skin !== DEFAULT_SKIN) {
+    obj.skin = skin;
+    const back = opts && 'skinPrevTheme' in opts ? opts.skinPrevTheme : prev.skinPrevTheme;
+    if (back) obj.skinPrevTheme = back;
+  }
   if (opts) {
     if (normalizeFont(opts.font) !== DEFAULT_FONT) obj.font = normalizeFont(opts.font);
     if (opts.density && opts.density !== DEFAULT_DENSITY) obj.density = opts.density;
@@ -544,6 +564,94 @@ function _syncToServer(obj) {
       body: JSON.stringify({ value: obj }),
     }).catch(e => console.warn('Theme sync failed:', e));
   } catch (e) { console.warn('Theme sync error:', e); }
+}
+
+const SKIN_PLACEHOLDERS = { chatgpt: 'Pergunte alguma coisa' };
+
+export function applySkin(skin) {
+  const s = UI_SKINS.has(skin) ? skin : DEFAULT_SKIN;
+  if (s === DEFAULT_SKIN) document.documentElement.removeAttribute('data-ui-skin');
+  else document.documentElement.setAttribute('data-ui-skin', s);
+  const input = document.getElementById('message');
+  if (input) input.setAttribute('placeholder', SKIN_PLACEHOLDERS[s] || 'Message Odysseus...');
+}
+
+export function getSkin() {
+  const saved = getSaved();
+  return saved && UI_SKINS.has(saved.skin) ? saved.skin : DEFAULT_SKIN;
+}
+
+function _isLightColors(colors) {
+  return !!(colors && colors.bg) && hexToHSL(colors.bg)[2] >= 50;
+}
+
+function _selectThemeSwatch(name) {
+  const sel = `.theme-swatch[data-theme="${CSS.escape(name)}"]`;
+  const sw = document.querySelector(`#themeGrid ${sel}, #themeUserGrid ${sel}`);
+  if (!sw || typeof sw._activateTheme !== 'function') return false;
+  sw._activateTheme();
+  return true;
+}
+
+/**
+ * Switch the interface skin. Entering a skin with its own palette selects
+ * that palette (dark/light follows the current theme unless `palette` says
+ * otherwise) and remembers the previous theme; leaving restores it.
+ */
+export function setSkin(skin, palette) {
+  const next = UI_SKINS.has(skin) ? skin : DEFAULT_SKIN;
+  const saved = getSaved() || { name: DEFAULT_THEME, colors: { ...THEMES[DEFAULT_THEME] } };
+  const current = UI_SKINS.has(saved.skin) ? saved.skin : DEFAULT_SKIN;
+  const stored = { ...saved };
+  let target = null;
+  if (next === DEFAULT_SKIN) {
+    if (current !== DEFAULT_SKIN) target = saved.skinPrevTheme || null;
+    delete stored.skin;
+    delete stored.skinPrevTheme;
+  } else {
+    stored.skin = next;
+    if (current === DEFAULT_SKIN) stored.skinPrevTheme = saved.name;
+    const palettes = SKIN_PALETTES[next];
+    if (palettes) target = palettes[palette || (_isLightColors(saved.colors) ? 'light' : 'dark')];
+  }
+  Storage.setJSON(LS_KEY, stored);
+  applySkin(next);
+  // Selecting the swatch applies + saves the palette (save() keeps the skin).
+  if (!target || target === saved.name || !_selectThemeSwatch(target)) _syncToServer(stored);
+}
+
+function _wireSkinPicker() {
+  const card = document.getElementById('uiSkinCard');
+  if (!card) return;
+  const render = () => {
+    const saved = getSaved() || {};
+    const skin = getSkin();
+    card.querySelectorAll('[data-skin]').forEach(b => {
+      const on = b.dataset.skin === skin;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    const mode = card.querySelector('.ui-skin-mode');
+    const palettes = SKIN_PALETTES[skin];
+    if (mode) {
+      mode.hidden = !palettes;
+      mode.querySelectorAll('[data-skin-palette]').forEach(b => {
+        b.classList.toggle('active', !!palettes && palettes[b.dataset.skinPalette] === saved.name);
+      });
+    }
+  };
+  if (card.dataset.bound !== '1') {
+    card.dataset.bound = '1';
+    card.addEventListener('click', (e) => {
+      const skinBtn = e.target.closest('[data-skin]');
+      const paletteBtn = e.target.closest('[data-skin-palette]');
+      if (skinBtn) setSkin(skinBtn.dataset.skin);
+      else if (paletteBtn) setSkin(getSkin(), paletteBtn.dataset.skinPalette);
+      else return;
+      render();
+    });
+  }
+  render();
 }
 
 async function _loadFromServer() {
@@ -701,7 +809,7 @@ export function initThemeUI() {
         <span style="background:${c.fg}"></span>
         <span style="background:${c.red}"></span>
       </div>
-      ${name === 'dark' ? 'original' : (name === 'gpt' ? 'GPT' : (THEME_DISPLAY_NAMES[name] || name))}
+      ${name === 'dark' ? 'original' : (THEME_DISPLAY_NAMES[name] || name)}
     </div>
   `).join('');
 
@@ -759,6 +867,9 @@ export function initThemeUI() {
     g.querySelectorAll('.theme-swatch').forEach(sw => {
       sw.addEventListener('click', (e) => {
         if (e.target.closest('.theme-delete-btn')) return;
+        sw._activateTheme();
+      });
+      sw._activateTheme = () => {
         const name = sw.dataset.theme;
         const colors = sw.dataset.custom ? customThemes[name] : THEMES[name];
         if (!colors) return;
@@ -801,7 +912,7 @@ export function initThemeUI() {
         if (sps) sps.value = String(Math.round(sp * 100));
         if (frs) frs.checked = fr;
         save(name, colors, { font: f, density: d, bgPattern: p, bgEffectColor: ec, bgEffectIntensity: ei, bgEffectSize: sz, bgEffectSpeed: sp, frosted: fr });
-      });
+      };
     });
     g.querySelectorAll('.theme-delete-btn').forEach(btn => {
       btn.addEventListener('click', async (e) => {
@@ -814,6 +925,8 @@ export function initThemeUI() {
       });
     });
   });
+
+  _wireSkinPicker();
 
   // Init color pickers from current theme and apply syntax colors
   const currentColors = saved ? saved.colors : THEMES[DEFAULT_THEME];
@@ -2281,7 +2394,7 @@ function _initEmbers() {
 const themeModule = { initThemeUI, togglePopup, closePopup, makeDraggable,
                        THEMES, applyColors, applyFontDensity, applyBgPattern,
                        applyBgEffectColor, applyBgEffectIntensity, applyBgEffectSize, applyBgEffectSpeed,
-                       applyFrostedGlass,
+                       applyFrostedGlass, applySkin, setSkin, getSkin,
                        save, getSaved, saveCustomTheme, deleteCustomTheme,
                        getCustomThemes };
 
@@ -2303,6 +2416,7 @@ async function _initWithSync() {
       applyColors(serverTheme.colors);
     }
   }
+  applySkin(getSkin());
   // Also sync custom themes from server
   try {
     const res = await fetch('/api/prefs/custom-themes', { credentials: 'same-origin' });
