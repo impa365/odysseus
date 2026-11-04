@@ -786,10 +786,16 @@ function createSessionItem(s) {
   }
   if (chatTitle) _prevSessionTitles.set(s.id, chatTitle);
 
-  let label = chatTitle;
-  if (s.model) label += ' · ' + s.model.split('/').pop();
-  if (s.archived) label += ' [archived]';
-  span.textContent = label;
+  // Model suffix lives in its own span so interface skins can hide it; the
+  // row's textContent stays "title · model [archived]".
+  span.textContent = chatTitle;
+  if (s.model) {
+    const suffix = document.createElement('span');
+    suffix.className = 'session-model-suffix';
+    suffix.textContent = ' · ' + s.model.split('/').pop();
+    span.appendChild(suffix);
+  }
+  if (s.archived) span.appendChild(document.createTextNode(' [archived]'));
   span.title = (s.model ? s.model.split('/').pop() + ' · ' : '') + chatTitle;
   span.classList.add('text-ellipsis');
 

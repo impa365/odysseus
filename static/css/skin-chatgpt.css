@@ -2,23 +2,26 @@
    Every rule is scoped to html[data-ui-skin="chatgpt"], so the default
    Odysseus look is untouched while the skin is off. Colors come from the
    active theme preset (gpt / gptlight); this file owns typography, shape
-   and layout. */
+   and layout. Measurements follow chatgpt.com (2026). */
 
 html[data-ui-skin="chatgpt"] {
   --font-family: ui-sans-serif, -apple-system, system-ui, "Segoe UI", "Helvetica Neue", Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", sans-serif !important;
   --gpt-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   --gpt-column: 48rem;
-  --gpt-hover: color-mix(in srgb, var(--fg) 7%, transparent);
-  --gpt-active: color-mix(in srgb, var(--fg) 11%, transparent);
-  --gpt-muted: color-mix(in srgb, var(--fg) 60%, transparent);
+  --gpt-hover: color-mix(in srgb, var(--fg) 6%, transparent);
+  --gpt-active: color-mix(in srgb, var(--fg) 9%, transparent);
+  --gpt-muted: color-mix(in srgb, var(--fg) 58%, transparent);
   --gpt-faint: color-mix(in srgb, var(--fg) 8%, transparent);
+  --gpt-line: color-mix(in srgb, var(--fg) 10%, transparent);
 }
 
 html[data-ui-skin="chatgpt"] body {
   font-family: var(--font-family);
+  font-size: 16px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   letter-spacing: normal;
+  background-image: none !important;
 }
 
 html[data-ui-skin="chatgpt"] pre,
@@ -29,9 +32,6 @@ html[data-ui-skin="chatgpt"] samp {
 }
 
 /* Background effects are an Odysseus flourish; ChatGPT is a flat canvas. */
-html[data-ui-skin="chatgpt"] body {
-  background-image: none !important;
-}
 html[data-ui-skin="chatgpt"] body > canvas[aria-hidden="true"],
 html[data-ui-skin="chatgpt"] body > pre[aria-hidden="true"] {
   display: none !important;
@@ -42,72 +42,103 @@ html[data-ui-skin="chatgpt"] body > pre[aria-hidden="true"] {
 html[data-ui-skin="chatgpt"] #sidebar,
 html[data-ui-skin="chatgpt"] #icon-rail {
   background: var(--sidebar-bg, var(--panel));
-  border-right: 1px solid var(--gpt-faint);
+  border-right: 1px solid var(--gpt-line);
   font-size: 14px;
-}
-
-html[data-ui-skin="chatgpt"] #sidebar .sidebar-header {
-  padding-top: 8px;
-  padding-bottom: 6px;
+  color: var(--fg);
 }
 
 html[data-ui-skin="chatgpt"] .sidebar-brand-title {
   background: none !important;
   -webkit-text-fill-color: currentColor !important;
   color: var(--fg) !important;
-  font-size: 17px;
+  font-size: 16px !important;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   text-shadow: none !important;
+}
+
+html[data-ui-skin="chatgpt"] #sidebar .sidebar-inner {
+  padding-left: 6px !important;
+  padding-right: 6px !important;
 }
 
 html[data-ui-skin="chatgpt"] #sidebar .list-item {
   border-radius: 10px;
-  padding: 8px 10px;
+  padding: 6px 10px !important;
   min-height: 36px;
-  font-size: 14px;
-  font-weight: 400;
+  gap: 8px;
+  border: 0 !important;
   color: var(--fg);
-  gap: 10px;
-  border: 0;
+  font-size: 14px !important;
+  font-weight: 400;
+  line-height: 20px;
+}
+html[data-ui-skin="chatgpt"] #sidebar .list-item .grow,
+html[data-ui-skin="chatgpt"] #sidebar .list-item .text-ellipsis {
+  font-size: 14px !important;
+  line-height: 20px;
+  left: 0 !important;
+  color: var(--fg);
 }
 html[data-ui-skin="chatgpt"] #sidebar .list-item:hover {
   background: var(--gpt-hover);
 }
 html[data-ui-skin="chatgpt"] #sidebar .list-item.active,
-html[data-ui-skin="chatgpt"] #sidebar .list-item.selected,
+html[data-ui-skin="chatgpt"] #sidebar .list-item.active-session,
 html[data-ui-skin="chatgpt"] #sidebar .list-item[aria-selected="true"] {
-  background: var(--gpt-active);
+  background: var(--gpt-active) !important;
 }
-html[data-ui-skin="chatgpt"] #sidebar .list-item svg {
+html[data-ui-skin="chatgpt"] #sidebar .list-item > svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
   color: var(--fg);
   stroke: currentColor;
-  opacity: 0.85;
-}
-html[data-ui-skin="chatgpt"] #sidebar .item-drag-handle,
-html[data-ui-skin="chatgpt"] #sidebar .session-star {
-  opacity: 0;
-}
-html[data-ui-skin="chatgpt"] #sidebar .list-item:hover .item-drag-handle {
-  opacity: 0.45;
+  opacity: 0.9 !important;
 }
 
-html[data-ui-skin="chatgpt"] #sidebar .sidebar-section-title,
-html[data-ui-skin="chatgpt"] #sidebar .section-header,
-html[data-ui-skin="chatgpt"] #sidebar .sidebar-section-header {
+/* Chat history rows: title only, actions on hover (like chatgpt.com). */
+html[data-ui-skin="chatgpt"] #sidebar .session-item .item-drag-handle,
+html[data-ui-skin="chatgpt"] #sidebar .session-item .session-star,
+html[data-ui-skin="chatgpt"] #sidebar .session-item .session-icon,
+html[data-ui-skin="chatgpt"] #sidebar .session-model-suffix {
+  display: none !important;
+}
+html[data-ui-skin="chatgpt"] #sidebar .session-item .session-menu-btn {
+  opacity: 0;
+}
+html[data-ui-skin="chatgpt"] #sidebar .session-item:hover .session-menu-btn,
+html[data-ui-skin="chatgpt"] #sidebar .session-item.active-session .session-menu-btn {
+  opacity: 0.7;
+}
+
+/* Section headers read as ChatGPT's muted group labels. */
+html[data-ui-skin="chatgpt"] #sidebar .section-header-flex {
+  padding: 14px 10px 4px !important;
+}
+html[data-ui-skin="chatgpt"] #sidebar .section-title,
+html[data-ui-skin="chatgpt"] #sidebar .section-title-label {
+  color: var(--gpt-muted) !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+}
+html[data-ui-skin="chatgpt"] #sidebar .section-title > svg {
+  display: none;
+}
+html[data-ui-skin="chatgpt"] #sidebar .section-header-btn {
   color: var(--gpt-muted);
-  font-size: 13px;
-  font-weight: 500;
-  text-transform: none;
-  letter-spacing: 0;
+  opacity: 0;
+}
+html[data-ui-skin="chatgpt"] #sidebar .section-header-flex:hover .section-header-btn {
+  opacity: 1;
 }
 
 html[data-ui-skin="chatgpt"] #sidebar-user-bar {
-  border-top: 0;
-  padding: 8px;
-}
-html[data-ui-skin="chatgpt"] #sidebar-user-bar:hover {
-  background: transparent;
+  border-top: 1px solid var(--gpt-line);
+  padding: 8px 10px;
+  font-size: 14px;
 }
 
 /* ── Main canvas & top bar ───────────────────────────────────────────── */
@@ -115,18 +146,14 @@ html[data-ui-skin="chatgpt"] #sidebar-user-bar:hover {
 html[data-ui-skin="chatgpt"] #chat-container {
   background: var(--bg);
 }
-
 html[data-ui-skin="chatgpt"] .chat-top-bar {
-  justify-content: flex-start;
-  padding-left: 14px;
   border-bottom: 0;
   background: var(--bg);
 }
 html[data-ui-skin="chatgpt"] .chat-meta-overlay {
   font-size: 18px;
-  font-weight: 500;
+  font-weight: 400;
   color: var(--fg);
-  letter-spacing: -0.01em;
 }
 html[data-ui-skin="chatgpt"] #current-meta {
   padding: 6px 10px;
@@ -135,22 +162,30 @@ html[data-ui-skin="chatgpt"] #current-meta {
 html[data-ui-skin="chatgpt"] #current-meta:hover {
   background: var(--gpt-hover);
 }
+html[data-ui-skin="chatgpt"] .chat-meta-count,
+html[data-ui-skin="chatgpt"] .chat-context-pill,
+html[data-ui-skin="chatgpt"] .session-cost-display {
+  font-size: 12px !important;
+  color: var(--gpt-muted) !important;
+}
 
 /* ── Welcome (empty chat) ────────────────────────────────────────────── */
 
 html[data-ui-skin="chatgpt"] #welcome-screen .welcome-name {
   font-size: 0;
   gap: 0;
+  margin-bottom: 0;
 }
 html[data-ui-skin="chatgpt"] #welcome-screen .welcome-name svg {
   display: none;
 }
 html[data-ui-skin="chatgpt"] #welcome-screen .welcome-name::after {
-  content: "Como posso ajudar?";
+  content: "Por onde começamos?";
   font-family: var(--font-family);
   font-size: 28px;
   font-weight: 400;
-  letter-spacing: -0.01em;
+  line-height: 34px;
+  letter-spacing: 0;
   color: var(--fg);
   background: none;
   -webkit-text-fill-color: currentColor;
@@ -160,10 +195,12 @@ html[data-ui-skin="chatgpt"] #welcome-screen .welcome-tip {
   display: none;
 }
 html[data-ui-skin="chatgpt"] #welcome-screen .incognito-btn {
+  margin-top: 10px;
   border-radius: 999px;
-  border: 1px solid var(--gpt-faint);
+  border: 1px solid var(--gpt-line);
   color: var(--gpt-muted);
   background: transparent;
+  font-size: 13px;
 }
 
 /* ── Messages ────────────────────────────────────────────────────────── */
@@ -176,14 +213,18 @@ html[data-ui-skin="chatgpt"] #chat-history {
 html[data-ui-skin="chatgpt"] .msg {
   border: 0 !important;
   box-shadow: none !important;
-  margin: 20px 0;
-  line-height: 1.75;
+  margin: 24px 0 0;
+  padding: 0;
+  font-size: 16px;
+  line-height: 28px;
+  overflow: visible;
 }
 
+/* User turn: the bubble is the text only; actions sit below it on hover. */
 html[data-ui-skin="chatgpt"] .msg-user {
-  background: var(--user-bubble-bg) !important;
-  border-radius: 22px !important;
-  padding: 10px 18px;
+  background: transparent !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
   margin-right: 0;
   max-width: 70%;
   min-width: 0;
@@ -192,47 +233,112 @@ html[data-ui-skin="chatgpt"] .msg-user .role,
 html[data-ui-skin="chatgpt"] .msg-user .timestamp {
   display: none;
 }
+html[data-ui-skin="chatgpt"] .msg-user .body {
+  background: var(--user-bubble-bg);
+  border-radius: 18px;
+  padding: 10px 16px;
+  font-size: 16px;
+  line-height: 24px;
+  width: auto;
+}
+html[data-ui-skin="chatgpt"] .msg-user .body p {
+  font-size: inherit;
+  line-height: inherit;
+}
 
+/* Assistant turn: no bubble, full column. */
 html[data-ui-skin="chatgpt"] .msg-ai {
   background: transparent !important;
   border-radius: 0 !important;
-  padding: 0;
   margin-left: 0;
   width: 100%;
   max-width: 100%;
 }
 html[data-ui-skin="chatgpt"] .msg-ai .role {
+  color: var(--gpt-muted) !important;
   font-size: 12px;
-  font-weight: 500;
-  color: var(--gpt-muted);
-  margin-bottom: 4px;
+  font-weight: 400;
+  line-height: 18px;
+  margin-bottom: 2px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
 }
-html[data-ui-skin="chatgpt"] .msg-ai .role::before {
+html[data-ui-skin="chatgpt"] .msg-ai:hover .role {
+  opacity: 1;
+}
+html[data-ui-skin="chatgpt"] .msg-ai .role::before,
+html[data-ui-skin="chatgpt"] .msg-ai .role .role-provider-logo {
   display: none;
 }
 
 html[data-ui-skin="chatgpt"] .msg .body {
   font-size: 16px;
-  line-height: 1.75;
+  line-height: 28px;
+  overflow: visible;
+}
+html[data-ui-skin="chatgpt"] .msg-ai .body p,
+html[data-ui-skin="chatgpt"] .msg-ai .body li,
+html[data-ui-skin="chatgpt"] .msg-ai .body td,
+html[data-ui-skin="chatgpt"] .msg-ai .body th,
+html[data-ui-skin="chatgpt"] .msg-ai .body blockquote {
+  font-size: 16px;
+  line-height: 28px;
+}
+html[data-ui-skin="chatgpt"] .msg-ai .body > p,
+html[data-ui-skin="chatgpt"] .msg-ai .body > ul,
+html[data-ui-skin="chatgpt"] .msg-ai .body > ol {
+  margin-top: 0;
+  margin-bottom: 20px;
+}
+html[data-ui-skin="chatgpt"] .msg-ai .body > :last-child {
+  margin-bottom: 0;
+}
+html[data-ui-skin="chatgpt"] .msg .body ol,
+html[data-ui-skin="chatgpt"] .msg .body ul {
+  padding-left: 26px;
+}
+html[data-ui-skin="chatgpt"] .msg .body li {
+  margin: 4px 0;
+}
+html[data-ui-skin="chatgpt"] .msg .body ol > li::marker,
+html[data-ui-skin="chatgpt"] .msg .body ul > li::marker {
+  color: var(--fg);
 }
 html[data-ui-skin="chatgpt"] .msg .body h1,
 html[data-ui-skin="chatgpt"] .msg .body h2,
 html[data-ui-skin="chatgpt"] .msg .body h3 {
   font-weight: 600;
-  letter-spacing: -0.01em;
   line-height: 1.35;
+  color: var(--fg);
 }
 html[data-ui-skin="chatgpt"] .msg .body strong,
 html[data-ui-skin="chatgpt"] .msg .body b {
   color: inherit;
   font-weight: 600;
 }
+html[data-ui-skin="chatgpt"] .msg .body a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 html[data-ui-skin="chatgpt"] .msg .body :not(pre) > code {
   color: inherit;
   background: var(--gpt-faint);
+  border: 0;
   border-radius: 6px;
   padding: 0.15em 0.4em;
   font-size: 0.875em;
+  font-weight: 500;
+}
+html[data-ui-skin="chatgpt"] .msg .body blockquote {
+  border-left: 3px solid var(--gpt-line);
+  padding-left: 14px;
+  color: var(--fg);
+  background: transparent;
+}
+html[data-ui-skin="chatgpt"] .msg .body hr {
+  border: 0;
+  border-top: 1px solid var(--gpt-line);
 }
 
 html[data-ui-skin="chatgpt"] .msg .body pre {
@@ -241,7 +347,7 @@ html[data-ui-skin="chatgpt"] .msg .body pre {
   border-radius: 16px !important;
   padding: 16px 18px;
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 22px;
 }
 html[data-ui-skin="chatgpt"] .msg .body pre .copy-code {
   border-radius: 8px;
@@ -254,38 +360,170 @@ html[data-ui-skin="chatgpt"] .msg .body pre .copy-code:hover {
   color: var(--fg);
 }
 
-html[data-ui-skin="chatgpt"] .msg-actions button,
+/* "View thinking process" reads like ChatGPT's quiet "Thought for …" line. */
+html[data-ui-skin="chatgpt"] .thinking-section {
+  border: 0 !important;
+  background: transparent !important;
+  margin: 0 0 12px !important;
+}
+html[data-ui-skin="chatgpt"] .thinking-header {
+  display: inline-flex !important;
+  width: auto !important;
+  gap: 4px;
+  padding: 2px 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: var(--gpt-muted) !important;
+  font-size: 14px !important;
+  font-weight: 400 !important;
+}
+html[data-ui-skin="chatgpt"] .thinking-header:hover {
+  color: var(--fg) !important;
+}
+html[data-ui-skin="chatgpt"] .thinking-toggle {
+  color: inherit;
+  transform: scale(0.75);
+}
+html[data-ui-skin="chatgpt"] .thinking-content {
+  border: 0 !important;
+  background: transparent !important;
+}
+html[data-ui-skin="chatgpt"] .thinking-content-inner {
+  border-left: 2px solid var(--gpt-line);
+  padding: 2px 0 2px 14px !important;
+  color: var(--gpt-muted);
+  font-size: 14px;
+  line-height: 22px;
+}
+html[data-ui-skin="chatgpt"] .thinking-content-inner p {
+  font-size: 14px;
+  line-height: 22px;
+}
+
+/* Message action rows: icon buttons, visible on hover and on the latest answer. */
+html[data-ui-skin="chatgpt"] .msg-footer {
+  margin-top: 4px;
+  gap: 2px;
+  color: var(--gpt-muted);
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+html[data-ui-skin="chatgpt"] .msg:hover .msg-footer,
+html[data-ui-skin="chatgpt"] .msg:focus-within .msg-footer,
+html[data-ui-skin="chatgpt"] #chat-history .msg-ai:not(:has(~ .msg-ai)) .msg-footer {
+  opacity: 1;
+}
+html[data-ui-skin="chatgpt"] .msg-user .msg-footer {
+  justify-content: flex-end;
+}
+html[data-ui-skin="chatgpt"] .msg-footer button,
 html[data-ui-skin="chatgpt"] .msg-action-btn {
+  min-width: 32px;
+  height: 32px;
   border-radius: 8px;
   border: 0 !important;
-  background: transparent;
+  background: transparent !important;
   color: var(--gpt-muted);
 }
-html[data-ui-skin="chatgpt"] .msg-actions button:hover,
+html[data-ui-skin="chatgpt"] .msg-footer button:hover,
 html[data-ui-skin="chatgpt"] .msg-action-btn:hover {
-  background: var(--gpt-hover);
+  background: var(--gpt-hover) !important;
   color: var(--fg);
 }
+html[data-ui-skin="chatgpt"] .memory-used-pill {
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 999px !important;
+  font-size: 12px;
+}
+html[data-ui-skin="chatgpt"] .response-metrics,
+html[data-ui-skin="chatgpt"] .msg-footer [class^="metrics-"],
+html[data-ui-skin="chatgpt"] .msg-footer [class*=" metrics-"] {
+  color: var(--gpt-muted);
+  font-size: 12px;
+}
 
-/* ── Composer ────────────────────────────────────────────────────────── */
+/* ── Composer: one-row pill (+ │ text │ model │ mode │ send) ─────────── */
 
 html[data-ui-skin="chatgpt"] .chat-input-bar {
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    "pinned pinned pinned pinned"
+    "left   text   picker right";
+  align-items: center;
+  column-gap: 4px;
   max-width: var(--gpt-column);
+  min-height: 56px;
+  padding: 8px 10px !important;
   border-radius: 28px !important;
   background: var(--input-bg) !important;
   border: 1px solid var(--input-border, transparent) !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06), 0 0 1px rgba(0, 0, 0, 0.08);
-  padding: 10px 12px 10px 18px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05), 0 0 1px rgba(0, 0, 0, 0.12);
 }
 html[data-ui-skin="chatgpt"] .chat-input-bar:focus-within {
   border-color: var(--input-border, transparent) !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), 0 0 1px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.07), 0 0 1px rgba(0, 0, 0, 0.16);
+}
+html[data-ui-skin="chatgpt"] .chat-input-bar > .chat-input-top,
+html[data-ui-skin="chatgpt"] .chat-input-bar > .chat-input-bottom {
+  display: contents !important;
+}
+html[data-ui-skin="chatgpt"] .chat-input-bar #pinned-tools-bar {
+  grid-area: pinned;
+}
+html[data-ui-skin="chatgpt"] .chat-input-bar .chat-input-left {
+  grid-area: left;
+  align-self: end;
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+html[data-ui-skin="chatgpt"] .chat-input-bar #message,
+html[data-ui-skin="chatgpt"] .chat-input-bar #message-ghost {
+  grid-area: text;
+  align-self: center;
+}
+html[data-ui-skin="chatgpt"] .chat-input-bar #message-ghost {
+  position: relative !important;
+  inset: auto !important;
+  pointer-events: none;
+}
+html[data-ui-skin="chatgpt"] .chat-input-bar #plan-mode-status {
+  grid-area: pinned;
+}
+html[data-ui-skin="chatgpt"] .chat-input-bar .model-picker-wrap {
+  grid-area: picker;
+  align-self: end;
+  position: relative !important;
+  inset: auto !important;
+  margin: 0 !important;
+}
+html[data-ui-skin="chatgpt"] .chat-input-bar .chat-input-right {
+  grid-area: right;
+  align-self: end;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
+html[data-ui-skin="chatgpt"] #message,
+html[data-ui-skin="chatgpt"] #message-ghost {
+  font-family: var(--font-family) !important;
+  font-size: 16px !important;
+  line-height: 24px !important;
+  padding: 0 6px !important;
+  margin: 0 !important;
+  min-height: 24px;
+}
 html[data-ui-skin="chatgpt"] #message {
-  font-family: var(--font-family);
-  font-size: 16px;
-  line-height: 1.5;
+  scrollbar-width: none;
+}
+html[data-ui-skin="chatgpt"] #message::-webkit-scrollbar {
+  display: none;
 }
 html[data-ui-skin="chatgpt"] #message::placeholder {
   color: var(--gpt-muted);
@@ -295,11 +533,24 @@ html[data-ui-skin="chatgpt"] .chat-input-bar .input-icon-btn {
   width: 36px;
   height: 36px;
   border-radius: 999px;
-  border: 0;
+  border: 0 !important;
+  background: transparent;
   color: var(--fg);
 }
 html[data-ui-skin="chatgpt"] .chat-input-bar .input-icon-btn:hover {
   background: var(--gpt-hover);
+}
+/* The overflow menu is ChatGPT's "+" button. */
+html[data-ui-skin="chatgpt"] .chat-input-bar .overflow-plus-btn > svg {
+  display: none;
+}
+html[data-ui-skin="chatgpt"] .chat-input-bar .overflow-plus-btn::before {
+  content: "";
+  width: 20px;
+  height: 20px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cline x1='12' y1='5' x2='12' y2='19'/%3E%3Cline x1='5' y1='12' x2='19' y2='12'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cline x1='12' y1='5' x2='12' y2='19'/%3E%3Cline x1='5' y1='12' x2='19' y2='12'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
 html[data-ui-skin="chatgpt"] .chat-input-bar .send-btn {
@@ -319,36 +570,49 @@ html[data-ui-skin="chatgpt"] .chat-input-bar .send-btn .send-btn-label {
   display: none;
 }
 
+/* Agent / Chat and the model picker read like ChatGPT's "Think" chip. */
 html[data-ui-skin="chatgpt"] .mode-toggle {
-  border-radius: 999px;
-  border: 1px solid var(--gpt-faint);
-  background: transparent;
-  padding: 2px;
+  border: 0 !important;
+  background: transparent !important;
+  padding: 0;
+  gap: 2px;
 }
 html[data-ui-skin="chatgpt"] .mode-toggle-btn {
-  border-radius: 999px;
+  height: 36px;
+  padding: 0 10px;
+  border: 0 !important;
+  border-radius: 999px !important;
+  background: transparent !important;
+  color: var(--gpt-muted) !important;
   font-family: var(--font-family);
-  font-size: 13px;
+  font-size: 14px;
 }
-html[data-ui-skin="chatgpt"] .mode-toggle-btn.active,
+html[data-ui-skin="chatgpt"] .mode-toggle-btn:hover {
+  background: var(--gpt-hover) !important;
+  color: var(--fg) !important;
+}
 html[data-ui-skin="chatgpt"] .mode-toggle.mode-chat #mode-chat-btn,
 html[data-ui-skin="chatgpt"] .mode-toggle.mode-agent #mode-agent-btn {
-  background: var(--gpt-active);
-  color: var(--fg);
+  background: var(--gpt-active) !important;
+  color: var(--fg) !important;
 }
-
 html[data-ui-skin="chatgpt"] .model-picker-btn {
-  border-radius: 999px;
+  height: 36px;
+  padding: 0 10px;
+  border: 0 !important;
+  border-radius: 999px !important;
+  background: transparent !important;
+  color: var(--gpt-muted) !important;
   font-family: var(--font-family);
-  font-size: 13px;
-  color: var(--gpt-muted);
+  font-size: 14px;
+  max-width: 180px;
 }
 html[data-ui-skin="chatgpt"] .model-picker-btn:hover {
-  background: var(--gpt-hover);
-  color: var(--fg);
+  background: var(--gpt-hover) !important;
+  color: var(--fg) !important;
 }
 
-/* ── Desktop layout: left-aligned header, heading + composer together ── */
+/* ── Desktop layout: heading + composer together ─────────────────────── */
 
 @media (min-width: 769px) {
   html[data-ui-skin="chatgpt"] .sidebar-header {
@@ -362,10 +626,10 @@ html[data-ui-skin="chatgpt"] .model-picker-btn:hover {
     justify-content: flex-start;
   }
   html[data-ui-skin="chatgpt"] #welcome-screen {
-    top: 38%;
+    top: 40%;
   }
   html[data-ui-skin="chatgpt"] .chat-container.welcome-active .chat-input-bar {
-    margin-bottom: calc(62vh - 190px);
+    margin-bottom: calc(60vh - 150px);
   }
 }
 
