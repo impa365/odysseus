@@ -70,6 +70,9 @@ services:
       ## Embeddings locais
       - FASTEMBED_MODEL=sentence-transformers/all-MiniLM-L6-v2
 
+      ## Memórias por resposta (até 5 do perfil fixado + busca)
+      - ODYSSEUS_MEMORY_CONTEXT_LIMIT=10
+
       ## Gerais
       - PUID=1000
       - PGID=1000

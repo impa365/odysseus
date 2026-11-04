@@ -1,6 +1,7 @@
 # src/chat_processor.py
 import logging
 import math
+import os
 import re
 import time
 from collections import Counter
@@ -72,12 +73,42 @@ _STOPWORDS = frozenset(
     "don't doesn't didn't won't wouldn't couldn't shouldn't "
     "it's i'm i've i'll i'd you're you've you'll he's she's we're we've they're they've "
     "that's there's here's what's who's how's let's can't".split()
+) | frozenset(
+    # Portuguese function words, so pt-BR queries score on content words.
+    "que com uma uns umas para pra pro por pelo pela pelos pelas dos das nos nas "
+    "num numa como mais mas foi ser ter tem tinha sao são está esta estou estão "
+    "isso isto esse essa esses essas este estes aquele aquela aqui ali onde quando "
+    "qual quais quem porque porquê sobre entre ate até sem seu sua seus suas meu "
+    "minha meus minhas nosso nossa voce você vocês voces ele ela eles elas "
+    "tudo todo toda todos todas muito muita pouco também tambem ainda então entao "
+    "sim não nao já vai vou fazer faz fiz pode posso quero queria olha ai aí mano "
+    "obrigado obrigada valeu favor".split()
+)
+
+# Self-referential questions ("who am I") have no topical overlap with the
+# memories that answer them; route them to identity memories instead.
+_IDENTITY_QUERY_MARKERS = (
+    "name", "who am i", "my name",
+    "quem sou eu", "quem eu sou", "meu nome", "como me chamo", "sobre mim",
+    "o que você sabe de mim", "o que voce sabe de mim", "me conhece",
+)
+_IDENTITY_MEMORY_MARKERS = (
+    "name is", "i am", "called",
+    "meu nome", "me chamo", "eu sou", "o usuário é", "o usuario e",
+    "usuário se chama", "usuario se chama", "nome do usuário", "nome do usuario",
 )
 
 def _content_tokens(text: str) -> list:
     """Extract meaningful content words: no stopwords, min 3 chars, lowercase."""
-    words = re.findall(r'[a-z0-9]+(?:[-_][a-z0-9]+)*', text.lower())
+    words = re.findall(r'[^\W_]+(?:[-_][^\W_]+)*', text.lower())
     return [w for w in words if len(w) >= 3 and w not in _STOPWORDS]
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return max(int(os.getenv(name, "") or default), 1)
+    except ValueError:
+        return default
 
 
 class ChatProcessor:
@@ -89,7 +120,10 @@ class ChatProcessor:
 
     # Minimum similarity score for RAG results to be injected
     RAG_SIMILARITY_THRESHOLD = 0.35
-    MEMORY_CONTEXT_LIMIT = 5
+    # Total memories per turn. Core pinned identity facts use up to
+    # CORE_MEMORY_AUTO_INJECT_LIMIT of these; large stores need headroom left
+    # for retrieval (ODYSSEUS_MEMORY_CONTEXT_LIMIT).
+    MEMORY_CONTEXT_LIMIT = _env_int("ODYSSEUS_MEMORY_CONTEXT_LIMIT", 5)
     PINNED_MEMORY_LIMIT = MEMORY_CONTEXT_LIMIT
     CORE_MEMORY_AUTO_INJECT_LIMIT = 5
 
@@ -108,6 +142,11 @@ class ChatProcessor:
             "email",
             "phone",
             "address",
+            "meu nome",
+            "me chamo",
+            "eu sou ",
+            "o usuário é ",
+            "o usuário se chama",
         ))
 
     def _select_pinned_memories(self, message: str, pinned: list) -> list:
@@ -233,8 +272,8 @@ class ChatProcessor:
             msg_lower = message.lower()
             mem_lower = mem["text"].lower()
             cat_boost = 1.0
-            if any(w in msg_lower for w in ["name", "who am i", "my name"]):
-                if category == "identity" or any(w in mem_lower for w in ["name is", "i am", "called"]):
+            if any(w in msg_lower for w in _IDENTITY_QUERY_MARKERS):
+                if category == "identity" or any(w in mem_lower for w in _IDENTITY_MEMORY_MARKERS):
                     cat_boost = 1.4
             elif any(w in msg_lower for w in ["phone", "email", "address", "contact"]):
                 if category == "contact" or "@" in mem_lower:
