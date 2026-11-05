@@ -29,6 +29,15 @@ from src.youtube_handler import (
 logger = logging.getLogger(__name__)
 
 
+def _with_brand_identity(system_prompt: Optional[str], character_name: str) -> Optional[str]:
+    """Name the assistant after the configured brand unless a persona names it."""
+    from src.constants import BRAND_NAME, DEFAULT_BRAND_NAME
+    if character_name or BRAND_NAME == DEFAULT_BRAND_NAME:
+        return system_prompt
+    name_line = f"Your name is {BRAND_NAME}."
+    return f"{name_line} {system_prompt}" if system_prompt else name_line
+
+
 def _sync_upload_vision_to_gallery(file_info: Dict[str, Any], owner: Optional[str], text: str) -> None:
     file_hash = (file_info or {}).get("hash")
     if not file_hash or not text:
@@ -96,7 +105,7 @@ class ChatHandler:
             preset = self.preset_manager.presets[preset_id]
             if preset.get("enabled") is False:
                 logger.info(f"Preset {preset_id} is disabled, using defaults")
-                return temperature, max_tokens, preset_system_prompt, character_name, persona_memory, persona_memory_schema
+                return temperature, max_tokens, _with_brand_identity(preset_system_prompt, character_name), character_name, persona_memory, persona_memory_schema
             if preset.get("system_prompt"):
                 preset_system_prompt = preset["system_prompt"]
             character_name = preset.get("character_name", "")
@@ -115,6 +124,7 @@ class ChatHandler:
                 max_tokens = preset["max_tokens"]
 
         logger.info(f"Preset {preset_id}: temp={temperature}, max_tokens={max_tokens}")
+        preset_system_prompt = _with_brand_identity(preset_system_prompt, character_name)
         return temperature, max_tokens, preset_system_prompt, character_name, persona_memory, persona_memory_schema
 
     def enhance_message_if_needed(self, message: str) -> str:

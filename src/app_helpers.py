@@ -48,7 +48,20 @@ def serve_html_with_nonce(request: Request, file_path: str) -> HTMLResponse:
         raise HTTPException(500, "Internal server error")
     nonce = getattr(request.state, "csp_nonce", "")
     html = html.replace("{{CSP_NONCE}}", nonce)
-    return HTMLResponse(html)
+    return HTMLResponse(apply_brand(html))
+
+
+def apply_brand(html: str) -> str:
+    """Swap the display name in a served page and expose it to the client."""
+    from html import escape
+    from src.constants import BRAND_NAME, DEFAULT_BRAND_NAME
+
+    if BRAND_NAME != DEFAULT_BRAND_NAME:
+        if BRAND_NAME.lower().endswith("chat"):
+            html = html.replace(f"{DEFAULT_BRAND_NAME} Chat", BRAND_NAME)
+        html = html.replace(DEFAULT_BRAND_NAME, BRAND_NAME)
+    meta = f'<meta name="app-brand" content="{escape(BRAND_NAME, quote=True)}">'
+    return html.replace("<head>", "<head>\n  " + meta, 1)
 
 
 def inside_base_dir(base_dir: str, path: str) -> bool:

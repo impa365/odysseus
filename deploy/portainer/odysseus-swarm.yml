@@ -6,6 +6,8 @@
 ##  Variáveis (Portainer > Stack > Environment variables, ou campo   ##
 ##  "Env" da API /api/stacks/create/swarm/string):                   ##
 ##    ODYSSEUS_DOMAIN           domínio público (sem https://)       ##
+##    ODYSSEUS_LEGACY_DOMAIN    domínio antigo, redireciona p/ o novo ##
+##    ODYSSEUS_BRAND_NAME       nome exibido na UI e da IA           ##
 ##    ODYSSEUS_ADMIN_PASSWORD   senha do admin (obrigatória)         ##
 ##    ODYSSEUS_ADMIN_USER       usuário admin (padrão: admin)        ##
 ##    ODYSSEUS_IMAGE            imagem (padrão impa365/odysseus)     ##
@@ -36,6 +38,9 @@ services:
       - odysseus_internal
 
     environment:
+      ## Nome exibido (UI, título, app instalado e nome da IA)
+      - ODYSSEUS_BRAND_NAME=${ODYSSEUS_BRAND_NAME:-Odysseus}
+
       ## Autenticação
       - AUTH_ENABLED=true
       - LOCALHOST_BYPASS=false
@@ -117,6 +122,19 @@ services:
         - traefik.http.middlewares.odysseus-https-redirect.redirectscheme.permanent=true
         - traefik.http.services.odysseus.loadbalancer.server.port=7000
         - traefik.http.services.odysseus.loadbalancer.passHostHeader=true
+        ## Domínio antigo -> novo (mantém caminho e #âncoras)
+        - traefik.http.routers.odysseus-legacy.rule=Host(`${ODYSSEUS_LEGACY_DOMAIN:-legacy.invalid}`)
+        - traefik.http.routers.odysseus-legacy.entrypoints=websecure
+        - traefik.http.routers.odysseus-legacy.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.odysseus-legacy.middlewares=odysseus-legacy-redirect
+        - traefik.http.routers.odysseus-legacy.service=odysseus
+        - traefik.http.routers.odysseus-legacy-http.rule=Host(`${ODYSSEUS_LEGACY_DOMAIN:-legacy.invalid}`)
+        - traefik.http.routers.odysseus-legacy-http.entrypoints=web
+        - traefik.http.routers.odysseus-legacy-http.middlewares=odysseus-legacy-redirect
+        - traefik.http.routers.odysseus-legacy-http.service=odysseus
+        - traefik.http.middlewares.odysseus-legacy-redirect.redirectregex.regex=^https?://[^/]+/(.*)
+        - traefik.http.middlewares.odysseus-legacy-redirect.redirectregex.replacement=https://${ODYSSEUS_DOMAIN}/$${1}
+        - traefik.http.middlewares.odysseus-legacy-redirect.redirectregex.permanent=true
 
 ## --------------------------- CHROMADB --------------------------- ##
 

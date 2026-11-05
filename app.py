@@ -57,7 +57,7 @@ from typing import Dict
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -541,6 +541,12 @@ class _RevalidatingStatic(StaticFiles):
     return a cheap 304 (ETag/Last-Modified are preserved)."""
 
     async def get_response(self, path, scope):
+        from src.constants import BRAND_NAME, DEFAULT_BRAND_NAME
+        if path == "manifest.json" and BRAND_NAME != DEFAULT_BRAND_NAME:
+            with open(os.path.join(STATIC_DIR, "manifest.json"), encoding="utf-8") as f:
+                branded = f.read().replace(DEFAULT_BRAND_NAME, BRAND_NAME)
+            return Response(branded, media_type="application/manifest+json",
+                            headers={"Cache-Control": "no-cache"})
         resp = await super().get_response(path, scope)
         if path.endswith((".js", ".css", ".html")):
             resp.headers["Cache-Control"] = "no-cache"

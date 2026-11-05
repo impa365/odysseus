@@ -6,6 +6,10 @@ import subprocess
 from src.runtime_paths import get_app_root, get_default_data_dir
 
 APP_VERSION = "1.0.3"
+# Display name for the UI and the assistant (ODYSSEUS_BRAND_NAME). Internal
+# identifiers (storage keys, env vars, tool formats) keep "odysseus".
+DEFAULT_BRAND_NAME = "Odysseus"
+BRAND_NAME = (os.getenv("ODYSSEUS_BRAND_NAME") or "").strip() or DEFAULT_BRAND_NAME
 BUILTIN_SKILLS_DIR = os.path.join(get_app_root(), "resources", "skills")
 # Identifies the private maintainer-preview build without changing the public
 # application semver used by release and readiness checks. Keep the API/UI
