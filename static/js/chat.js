@@ -3147,7 +3147,15 @@ import { invalidateSettings } from './appConfig.js';
           const errBody = await res.text();
           // Parse nested JSON error if present
           const m = errBody.match(/"message"\s*:\s*"([^"]+)"/);
+          let detail = null;
+          try {
+            const parsed = JSON.parse(errBody);
+            const d = parsed && parsed.detail;
+            if (typeof d === 'string') detail = d;
+            else if (Array.isArray(d) && d[0] && d[0].msg) detail = d[0].msg;
+          } catch {}
           if (m) errText = m[1].replace(/\\"/g, '"');
+          else if (detail) errText = detail;
           else if (errBody.length < 200) errText = errBody;
         } catch {}
         // Auto-switch to chat mode for tool-related errors

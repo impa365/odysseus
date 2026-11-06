@@ -517,8 +517,15 @@ def validate_message(message: str) -> str:
     if len(message) == 0:
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
-    if len(message) > 50000:
-        raise HTTPException(status_code=400, detail="Message exceeds maximum length")
+    from src.constants import MAX_MESSAGE_CHARS
+    if len(message) > MAX_MESSAGE_CHARS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Message is too long ({len(message):,} characters; the limit is "
+                f"{MAX_MESSAGE_CHARS:,}). Attach it as a file instead."
+            ),
+        )
 
     return message
 

@@ -78,6 +78,9 @@ services:
       ## Memórias por resposta (até 5 do perfil fixado + busca)
       - ODYSSEUS_MEMORY_CONTEXT_LIMIT=10
 
+      ## Tamanho máximo de uma mensagem (caracteres)
+      - ODYSSEUS_MAX_MESSAGE_CHARS=200000
+
       ## Gerais
       - PUID=1000
       - PGID=1000

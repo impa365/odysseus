@@ -2,10 +2,12 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
+from src.constants import MAX_MESSAGE_CHARS
+
 
 # Request Models
 class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1, max_length=50000, description="Chat message")
+    message: str = Field(..., min_length=1, max_length=MAX_MESSAGE_CHARS, description="Chat message")
     session: str = Field(..., description="Session ID")
     attachments: Optional[List[str]] = Field(default=[], description="Attachment IDs")
     use_web: Optional[bool] = Field(default=False, description="Enable web search")

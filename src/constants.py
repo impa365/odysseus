@@ -10,6 +10,18 @@ APP_VERSION = "1.0.3"
 # identifiers (storage keys, env vars, tool formats) keep "odysseus".
 DEFAULT_BRAND_NAME = "Odysseus"
 BRAND_NAME = (os.getenv("ODYSSEUS_BRAND_NAME") or "").strip() or DEFAULT_BRAND_NAME
+
+
+def _positive_int_env(name: str, default: int) -> int:
+    try:
+        value = int(os.getenv(name, "") or default)
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+# Longest chat message accepted, in characters (ODYSSEUS_MAX_MESSAGE_CHARS).
+MAX_MESSAGE_CHARS = _positive_int_env("ODYSSEUS_MAX_MESSAGE_CHARS", 50000)
 BUILTIN_SKILLS_DIR = os.path.join(get_app_root(), "resources", "skills")
 # Identifies the private maintainer-preview build without changing the public
 # application semver used by release and readiness checks. Keep the API/UI
