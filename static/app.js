@@ -2474,7 +2474,7 @@ function initializeEventListeners() {
 	        return;
 	      }
 	      if (document.documentElement.getAttribute('data-ui-skin') === 'chatgpt') {
-	        textarea.setAttribute('placeholder', 'Pergunte ao Odysseus');
+	        textarea.setAttribute('placeholder', 'Ask Odysseus');
 	        return;
 	      }
 	      textarea.setAttribute('placeholder', width < PLACEHOLDER_COMPACT_WIDTH ? 'Message...' : 'Message Odysseus...');

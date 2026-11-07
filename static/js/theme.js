@@ -566,7 +566,7 @@ function _syncToServer(obj) {
   } catch (e) { console.warn('Theme sync error:', e); }
 }
 
-const SKIN_PLACEHOLDERS = { chatgpt: 'Pergunte ao Odysseus' };
+const SKIN_PLACEHOLDERS = { chatgpt: 'Ask Odysseus' };
 
 export function applySkin(skin) {
   const s = UI_SKINS.has(skin) ? skin : DEFAULT_SKIN;

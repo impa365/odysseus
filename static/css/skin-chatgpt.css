@@ -180,7 +180,7 @@ html[data-ui-skin="chatgpt"] #welcome-screen .welcome-name svg {
   display: none;
 }
 html[data-ui-skin="chatgpt"] #welcome-screen .welcome-name::after {
-  content: "Por onde começamos?";
+  content: "Where should we begin?";
   font-family: var(--font-family);
   font-size: 28px;
   font-weight: 400;
@@ -189,6 +189,12 @@ html[data-ui-skin="chatgpt"] #welcome-screen .welcome-name::after {
   color: var(--fg);
   background: none;
   -webkit-text-fill-color: currentColor;
+}
+html[data-ui-skin="chatgpt"]:lang(pt) #welcome-screen .welcome-name::after {
+  content: "Por onde começamos?";
+}
+html[data-ui-skin="chatgpt"]:lang(es) #welcome-screen .welcome-name::after {
+  content: "¿Por dónde empezamos?";
 }
 html[data-ui-skin="chatgpt"] #welcome-screen .welcome-sub,
 html[data-ui-skin="chatgpt"] #welcome-screen .welcome-tip {
@@ -652,6 +658,7 @@ html[data-ui-skin="chatgpt"] * {
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
+  height: auto;
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid var(--border);
@@ -683,6 +690,9 @@ html[data-ui-skin="chatgpt"] * {
 }
 .ui-skin-mode[hidden] {
   display: none;
+}
+.ui-lang-options {
+  margin-top: 0;
 }
 .ui-skin-mode button {
   flex: 1;
